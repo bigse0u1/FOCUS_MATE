@@ -1,153 +1,216 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Face Tracking with Mediapipe</title>
-    <!-- Cache busting 추가 -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js?v=1.0.0"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FocusMate Vision</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; background: #0e0e0e; color: #eee;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    /* 좌: 카메라 / 우: 패널(빨간얼굴+표) */
+    .wrap {
+      display: flex; gap: 24px;
+      align-items: flex-start; justify-content: center;
+      padding: 24px;
+    }
+
+    /* 왼쪽 실제 카메라 */
+    .camCol {
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    #cam {
+      display: block;
+      width: 640px; height: 480px;         /* 필요하면 크기 조절 */
+      background: #111; border: 1px solid #222; border-radius: 12px;
+      object-fit: cover;
+      transform: scaleX(-1);               /* 거울 모드(원치 않으면 제거) */
+    }
+
+    /* 오른쪽 패널 */
+    .panel {
+      width: 360px; background: #111; border: 1px solid #222; border-radius: 12px;
+      padding: 14px 14px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+      display: flex; flex-direction: column; gap: 12px; align-items: center;
+    }
+
+    /* 🔴 미니 얼굴(조금 작게) */
+    #miniFace {
+      width: 220px; height: 220px;         /* ▶️ 이전보다 살짝 축소 */
+      background: #111; border: 1px solid #222; border-radius: 12px; display: block;
+    }
+
+    .state-badge { font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { border: 1px solid #2a2a2a; padding: 8px; text-align: center; }
+    th { background: #171717; } td { background: #121212; }
+    .reasons { font-size: 12px; color: #cfcfcf; white-space: pre-wrap; width: 100%; }
+    .fm-hidden { position: fixed !important; left: -9999px !important; top: -9999px !important; }
+  </style>
 </head>
 <body>
-    <video id="webcam" width="640" height="480" autoplay></video>
-    <canvas id="output" width="640" height="480"></canvas>
-    <div id="info"></div>
+    <h1 style="text-align:center; margin-top:20px; color:#fff; font-size:28px;"> <!--제목-->
+      FocusMate 
+    </h1>
+   
+  <div class="wrap">
+    <!-- ⬅️ 왼쪽: 실제 카메라 -->
+    <div class="camCol">
+      <!-- 여기 자리는 dev.ts에서 vision.video로 교체됨 -->
+      <video id="cam" width="320" height="240" autoplay playsinline muted></video>
+    </div>
 
-    <script>
-        const video = document.getElementById('webcam');
-        const canvas = document.getElementById('output');
-        const ctx = canvas.getContext('2d');
-        const info = document.getElementById('info');
+    <!-- ➡️ 오른쪽: 빨간 얼굴 + 표 -->
+    <div class="panel">
+      <!-- 🔴 미니 얼굴(축소) -->
+      <canvas id="miniFace" width="220" height="220"></canvas>
 
-        let blinkActive = false;
-        let blinkStart = 0;
-        let lastEAR = 0;
-        let T = 0.2;  // EAR threshold for blink detection (calibrate as needed)
-        let perclosWindow = [];
-        let idtWindow = [];
-        let dwellStart = 0;
-        let lastRoi = "";
+      <div class="state-badge">
+        <span id="state">STATE —</span>
+        <span id="score" style="opacity:.8;margin-left:6px">score —</span>
+      </div>
 
-        // FaceMesh 객체 생성
-        const faceMesh = new FaceMesh({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-        });
+      <table>
+        <thead><tr><th>항목</th><th>값</th></tr></thead>
+        <tbody>
+          <tr><td>EAR</td><td id="ear">—</td></tr>
+          <tr><td>PERCLOS</td><td id="perclos">—</td></tr>
+          <tr><td>Fixation</td><td id="fix">—</td></tr>
+          <tr><td>Dwell</td><td id="dwell">—</td></tr>
+          <tr><td>ROI</td><td id="roi">—</td></tr>
+        </tbody>
+      </table>
 
-        faceMesh.setOptions({
-            maxNumFaces: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
+      <div class="reasons" id="reasons"></div>
+    </div>
+  </div>
 
-        faceMesh.onResults(onResults);
+  <!-- 파이프라인 계산 로드 -->
+  <script type="module" src="/src/dev.ts"></script>
 
-        async function startWebcam() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
-                video.onloadeddata = () => {
-                    faceMesh.send({ image: video });
-                };
-            } catch (err) {
-                console.error("Error accessing webcam: ", err);
-            }
+  <!-- 얼굴 그리기 & 표 갱신 -->
+  <script>
+    const mini = document.getElementById('miniFace');
+    const mctx = mini.getContext('2d');
+
+    /* Mediapipe FaceMesh 대표 컨투어 인덱스 */
+    const OVAL        = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109,10];
+    const RIGHT_BROW  = [70,63,105,66,107,55];
+    const LEFT_BROW   = [336,296,334,293,300,276];
+    const RIGHT_EYE   = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246,33];
+    const LEFT_EYE    = [362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398,362];
+    const OUTER_LIPS  = [61,146,91,181,84,17,314,405,321,375,291,308,324,318,402,317,14,87,178,88,95,78,61];
+    const INNER_LIPS  = [78,95,88,178,87,14,317,402,318,324,308,291,375,321,405,314,17,84,181,91,146,61];
+    const NOSE_BRIDGE = [168,6,197,195,5,4];
+    const NOSE_TIP    = [1,2,98,327,168];
+
+    function drawPath(P, idxs, closed=false){
+      if (!idxs.length) return;
+      mctx.beginPath();
+      for (let i=0; i<idxs.length; i++){
+        const [x,y] = P[idxs[i]];
+        if (i===0) mctx.moveTo(x,y); else mctx.lineTo(x,y);
+      }
+      if (closed) mctx.closePath();
+      mctx.stroke();
+    }
+
+    function drawMiniFace(detail) {
+      const lm = detail?.landmarks;
+      const w = mini.width, h = mini.height;
+
+      if (!Array.isArray(lm) || lm.length < 100) {
+        // 폴백: 눈만 점으로
+        const eyes = [...(detail?.eyes?.l ?? []), ...(detail?.eyes?.r ?? [])];
+        if (!eyes.length) return;
+        const xs = eyes.map(p=>p[0]), ys = eyes.map(p=>p[1]);
+        const cx = xs.reduce((a,b)=>a+b,0)/xs.length, cy = ys.reduce((a,b)=>a+b,0)/ys.length;
+        const rangeX = Math.max(...xs)-Math.min(...xs);
+        const rangeY = Math.max(...ys)-Math.min(...ys);
+        const scale = 0.9 / Math.max(rangeX, rangeY || 1e-6);
+        mctx.clearRect(0,0,w,h);
+        mctx.fillStyle='rgba(255,0,0,0.9)';
+        for (const [x,y] of eyes) {
+          const px = w/2 + (x-cx)*w*scale, py = h/2 + (y-cy)*h*scale;
+          mctx.beginPath(); mctx.arc(px,py,2,0,Math.PI*2); mctx.fill();
         }
-
-        // Calculate EAR (Eye Aspect Ratio)
-        function earFromEye(eye) {
-            const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-            const V = dist(eye[1], eye[5]);  // Vertical distance
-            const H = dist(eye[0], eye[3]);  // Horizontal distance
-            return V / (2 * H);
+        if (detail?.iris?.l && detail?.iris?.r) {
+          mctx.fillStyle='orange';
+          for (const c of [detail.iris.l, detail.iris.r]) {
+            const px = w/2 + (c[0]-cx)*w*scale, py = h/2 + (c[1]-cy)*h*scale;
+            mctx.beginPath(); mctx.arc(px,py,3,0,Math.PI*2); mctx.fill();
+          }
         }
+        return;
+      }
 
-        // PERCLOS calculation: ratio of time eyes are closed
-        function updatePERCLOS(t, closed) {
-            perclosWindow.push({ t, closed });
-            const cutoff = t - 60000;
-            while (perclosWindow.length && perclosWindow[0].t < cutoff) {
-                perclosWindow.shift();
-            }
-            return perclosWindow.length ? 
-                perclosWindow.reduce((s, v) => s + v.closed, 0) / perclosWindow.length : 0;
+      // 전체 얼굴(468) → 중앙 배치 스케일
+      const xs = lm.map(p=>p[0]), ys = lm.map(p=>p[1]);
+      const cx = xs.reduce((a,b)=>a+b,0)/xs.length, cy = ys.reduce((a,b)=>a+b,0)/ys.length;
+      const rangeX = Math.max(...xs)-Math.min(...xs);
+      const rangeY = Math.max(...ys)-Math.min(...ys);
+      const scale = 0.95 / Math.max(rangeX, rangeY || 1e-6);
+
+      const P = lm.map(([x,y]) => [
+        w/2 + (x-cx)*w*scale,
+        h/2 + (y-cy)*h*scale
+      ]);
+
+      mctx.clearRect(0,0,w,h);
+
+      // 선(컨투어)
+      mctx.strokeStyle = 'rgba(255,0,0,0.65)';
+      mctx.lineWidth = 1.1;
+      drawPath(P, OVAL, true);
+      drawPath(P, RIGHT_BROW);  drawPath(P, LEFT_BROW);
+      drawPath(P, RIGHT_EYE, true); drawPath(P, LEFT_EYE, true);
+      drawPath(P, OUTER_LIPS, true); drawPath(P, INNER_LIPS, true);
+      drawPath(P, NOSE_BRIDGE); drawPath(P, NOSE_TIP);
+
+      // 점(전체 랜드마크)
+      mctx.fillStyle = 'rgba(255,0,0,0.9)';
+      for (const [px,py] of P) { mctx.beginPath(); mctx.arc(px,py,1.5,0,Math.PI*2); mctx.fill(); }
+
+      // 홍채
+      if (detail?.iris?.l && detail?.iris?.r) {
+        mctx.fillStyle='orange';
+        for (const c of [detail.iris.l, detail.iris.r]) {
+          const px = w/2 + (c[0]-cx)*w*scale, py = h/2 + (c[1]-cy)*h*scale;
+          mctx.beginPath(); mctx.arc(px,py,3,0,Math.PI*2); mctx.fill();
         }
+      }
+    }
 
-        // I-DT (150ms) Fixation detection
-        function updateIDT(t, irisX, irisY) {
-            const idtCut = t - 150;
-            idtWindow.push({ t, p: { x: irisX, y: irisY } });
-            while (idtWindow.length && idtWindow[0].t < idtCut) {
-                idtWindow.shift();
-            }
-            const xs = idtWindow.map(v => v.p.x);
-            const ys = idtWindow.map(v => v.p.y);
-            const disp = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-            return disp <= 0.01;  // Fixation is true if movement is small
-        }
+    // 이벤트 연결
+    window.addEventListener('fm:vision',  e => drawMiniFace(e.detail));
 
-        function onResults(results) {
-            if (results.multiFaceLandmarks) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                results.multiFaceLandmarks.forEach((landmarks) => {
-                    // Draw face landmarks on canvas
-                    for (let i = 0; i < landmarks.length; i++) {
-                        const x = landmarks[i].x * canvas.width;
-                        const y = landmarks[i].y * canvas.height;
-                        ctx.beginPath();
-                        ctx.arc(x, y, 2, 0, 2 * Math.PI);
-                        ctx.fillStyle = 'red';
-                        ctx.fill();
-                    }
+    // 표 갱신
+    const $ = id => document.getElementById(id);
+    window.addEventListener('fm:metrics', e => {
+      const m = e.detail;
+      $('ear').textContent      = m.earAvg?.toFixed(3);
+      $('perclos').textContent  = (m.perclos * 100).toFixed(1) + '%';
+      $('fix').textContent      = m.fixation?.isFixed ? 'Fixed' : 'Not fixed';
+      $('dwell').textContent    = Math.round(m.fixation?.dwellMs || 0) + ' ms';
+      $('roi').textContent      = m.fixation?.roiKey || '-';
+    });
+    window.addEventListener('fm:state', e => {
+      const s = e.detail;
+      if (s?.state) $('state').textContent = 'STATE ' + s.state;
+      if (typeof s?.score === 'number') $('score').textContent = 'score ' + s.score;
+      if (s?.reason)
+        $('reasons').textContent = Array.isArray(s.reason) ? s.reason.join('\n') : String(s.reason);
+    });
 
-                    // Extract left and right eye landmarks
-                    const leftEye = [
-                        landmarks[33], landmarks[159], landmarks[158], landmarks[133], landmarks[153], landmarks[144]
-                    ];
-                    const rightEye = [
-                        landmarks[362], landmarks[263], landmarks[466], landmarks[390], landmarks[373], landmarks[380]
-                    ];
-
-                    // Calculate EAR for left and right eyes
-                    const earL = earFromEye(leftEye);
-                    const earR = earFromEye(rightEye);
-                    const earAvg = (earL + earR) / 2;
-                    console.log('Average EAR:', earAvg);
-
-                    // Blink detection: EAR < threshold
-                    if (earAvg < T && !blinkActive) {
-                        blinkActive = true;
-                        blinkStart = Date.now();
-                    } else if (earAvg >= T && blinkActive) {
-                        blinkActive = false;
-                        const blinkDuration = Date.now() - blinkStart;
-                        const blink = {
-                            start: blinkStart,
-                            end: Date.now(),
-                            duration: blinkDuration
-                        };
-                        console.log('Blink detected:', blink);
-                    }
-
-                    // Update PERCLOS
-                    const closed = earAvg < T ? 1 : 0;
-                    const perclos = updatePERCLOS(Date.now(), closed);
-                    console.log('PERCLOS:', perclos);
-
-                    // Update I-DT (150ms) Fixation
-                    const isFixed = updateIDT(Date.now(), landmarks[33].x, landmarks[33].y);
-                    console.log('Fixation:', isFixed);
-
-                    // Update display info
-                    info.innerHTML = `
-                        Average EAR: ${earAvg.toFixed(2)}<br>
-                        Blink duration: ${blink ? blink.duration : 'N/A'} ms<br>
-                        PERCLOS: ${(perclos * 100).toFixed(2)}%<br>
-                        Fixation: ${isFixed ? 'Fixed' : 'Not Fixed'}
-                    `;
-                });
-            }
-        }
-
-        startWebcam();
-    </script>
+    // dev.ts 디버그 패널 숨김
+    const hideDevPanel = () => {
+      const p = [...document.querySelectorAll('div')]
+        .find(d => d.textContent?.includes('STATE:') && getComputedStyle(d).position === 'fixed');
+      if (p) p.classList.add('fm-hidden'); else setTimeout(hideDevPanel, 500);
+    };
+    hideDevPanel();
+  </script>
 </body>
 </html>
