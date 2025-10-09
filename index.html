@@ -1,14 +1,153 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>focusmate-core</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Tracking with Mediapipe</title>
+    <!-- Cache busting 추가 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js?v=1.0.0"></script>
+</head>
+<body>
+    <video id="webcam" width="640" height="480" autoplay></video>
+    <canvas id="output" width="640" height="480"></canvas>
+    <div id="info"></div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('output');
+        const ctx = canvas.getContext('2d');
+        const info = document.getElementById('info');
+
+        let blinkActive = false;
+        let blinkStart = 0;
+        let lastEAR = 0;
+        let T = 0.2;  // EAR threshold for blink detection (calibrate as needed)
+        let perclosWindow = [];
+        let idtWindow = [];
+        let dwellStart = 0;
+        let lastRoi = "";
+
+        // FaceMesh 객체 생성
+        const faceMesh = new FaceMesh({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        });
+
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        faceMesh.onResults(onResults);
+
+        async function startWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                video.onloadeddata = () => {
+                    faceMesh.send({ image: video });
+                };
+            } catch (err) {
+                console.error("Error accessing webcam: ", err);
+            }
+        }
+
+        // Calculate EAR (Eye Aspect Ratio)
+        function earFromEye(eye) {
+            const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+            const V = dist(eye[1], eye[5]);  // Vertical distance
+            const H = dist(eye[0], eye[3]);  // Horizontal distance
+            return V / (2 * H);
+        }
+
+        // PERCLOS calculation: ratio of time eyes are closed
+        function updatePERCLOS(t, closed) {
+            perclosWindow.push({ t, closed });
+            const cutoff = t - 60000;
+            while (perclosWindow.length && perclosWindow[0].t < cutoff) {
+                perclosWindow.shift();
+            }
+            return perclosWindow.length ? 
+                perclosWindow.reduce((s, v) => s + v.closed, 0) / perclosWindow.length : 0;
+        }
+
+        // I-DT (150ms) Fixation detection
+        function updateIDT(t, irisX, irisY) {
+            const idtCut = t - 150;
+            idtWindow.push({ t, p: { x: irisX, y: irisY } });
+            while (idtWindow.length && idtWindow[0].t < idtCut) {
+                idtWindow.shift();
+            }
+            const xs = idtWindow.map(v => v.p.x);
+            const ys = idtWindow.map(v => v.p.y);
+            const disp = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+            return disp <= 0.01;  // Fixation is true if movement is small
+        }
+
+        function onResults(results) {
+            if (results.multiFaceLandmarks) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                results.multiFaceLandmarks.forEach((landmarks) => {
+                    // Draw face landmarks on canvas
+                    for (let i = 0; i < landmarks.length; i++) {
+                        const x = landmarks[i].x * canvas.width;
+                        const y = landmarks[i].y * canvas.height;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 2, 0, 2 * Math.PI);
+                        ctx.fillStyle = 'red';
+                        ctx.fill();
+                    }
+
+                    // Extract left and right eye landmarks
+                    const leftEye = [
+                        landmarks[33], landmarks[159], landmarks[158], landmarks[133], landmarks[153], landmarks[144]
+                    ];
+                    const rightEye = [
+                        landmarks[362], landmarks[263], landmarks[466], landmarks[390], landmarks[373], landmarks[380]
+                    ];
+
+                    // Calculate EAR for left and right eyes
+                    const earL = earFromEye(leftEye);
+                    const earR = earFromEye(rightEye);
+                    const earAvg = (earL + earR) / 2;
+                    console.log('Average EAR:', earAvg);
+
+                    // Blink detection: EAR < threshold
+                    if (earAvg < T && !blinkActive) {
+                        blinkActive = true;
+                        blinkStart = Date.now();
+                    } else if (earAvg >= T && blinkActive) {
+                        blinkActive = false;
+                        const blinkDuration = Date.now() - blinkStart;
+                        const blink = {
+                            start: blinkStart,
+                            end: Date.now(),
+                            duration: blinkDuration
+                        };
+                        console.log('Blink detected:', blink);
+                    }
+
+                    // Update PERCLOS
+                    const closed = earAvg < T ? 1 : 0;
+                    const perclos = updatePERCLOS(Date.now(), closed);
+                    console.log('PERCLOS:', perclos);
+
+                    // Update I-DT (150ms) Fixation
+                    const isFixed = updateIDT(Date.now(), landmarks[33].x, landmarks[33].y);
+                    console.log('Fixation:', isFixed);
+
+                    // Update display info
+                    info.innerHTML = `
+                        Average EAR: ${earAvg.toFixed(2)}<br>
+                        Blink duration: ${blink ? blink.duration : 'N/A'} ms<br>
+                        PERCLOS: ${(perclos * 100).toFixed(2)}%<br>
+                        Fixation: ${isFixed ? 'Fixed' : 'Not Fixed'}
+                    `;
+                });
+            }
+        }
+
+        startWebcam();
+    </script>
+</body>
 </html>
-<script type="module" src="/src/dev.ts"></script>
