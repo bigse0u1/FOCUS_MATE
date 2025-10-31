@@ -24,3 +24,7 @@ h1{font-size:16px;margin:0}
 
 .rank{width:100%;border-collapse:collapse;margin-top:10px}
 .rank th,.rank td{border:1px solid #2a2f44;padding:8px;text-align:center}
+
+/* ✅ 1시간/24시간 토글 스타일 */
+.daily-toolbar{display:flex;gap:8px;margin:6px 0}
+.tab.small{padding:6px 10px;font-size:12px}
