@@ -1,139 +1,73 @@
-// src/metrics/index.ts
-import type { VisionFrame, MetricsSnapshot, XY, BlinkEvent } from "../types";
+/**
+ * fm:vision → EAR/깜빡임/PERCLOS 계산 → fm:metrics
+ * + 10초 캘리브레이션(runCalibration)
+ */
+type Pt = {x:number,y:number};
+type VisionEvt = { ts:number; fps:number; left:{pts:Pt[]}; right:{pts:Pt[]}; conf:number; valid:boolean };
 
-function dist(a: XY, b: XY) {
-  const dx = a.x - b.x, dy = a.y - b.y;
-  return Math.hypot(dx, dy);
-}
+const S = {
+  ear0: Number(localStorage.getItem('fm_ear0')||0) || 0,
+  lastEAR: 0,
+  blinkOn: false,
+  blinkStart: 0,
+  perclosBuf: [] as number[],
+};
 
-// EAR 계산: (수직) / (수평*2). Mediapipe 단순 4점 버전
-function earFromEye(eye: XY[]): number {
-  if (eye.length < 4) return NaN;
-  const V = dist(eye[0], eye[1]);   // 수직
-  const H = dist(eye[2], eye[3]);   // 수평
-  return V / (2 * H);
-}
+function dist(a:Pt,b:Pt){const dx=a.x-b.x,dy=a.y-b.y;return Math.hypot(dx,dy);}
+function eyeEAR(pts:Pt[]){if(pts.length<6)return 0;const [p1,p2,p3,p4,p5,p6]=pts;return (dist(p2,p6)+dist(p3,p5))/(2*dist(p1,p4)+1e-6);}
+function smooth(p:number,c:number,a=0.6){return p?a*p+(1-a)*c:c;}
 
-export class Metrics {
-  private T = 0.0; // EAR 임계 (개인화)
-  private calibrated = false;
-  private calibSamples: number[] = [];
+window.addEventListener("fm:vision",(e:any)=>{
+  const v:VisionEvt=e.detail;
+  if(!v.valid||v.conf<0.5)return;
 
-  private perclosWindow: { t: number; closed: 0 | 1 }[] = []; // 최근 60s
-  private lastEAR = 0;
+  const earL=eyeEAR(v.left.pts), earR=eyeEAR(v.right.pts);
+  const ear=(earL+earR)/2;
+  S.lastEAR=smooth(S.lastEAR,ear);
 
-  private blinkActive = false;
-  private blinkStart = 0;
+  const T=S.ear0?S.ear0*0.72:0.22;
+  const closed=S.lastEAR<T;
 
-  private idtWindow: { t: number; p: XY }[] = []; // 150ms
-  private dwellStart = 0;
-  private lastRoi = "";
-
-  // 빠른 3초 캘리브레이션(수업 시연용)
-  async calibrate(seconds = 3) {
-    this.T = 0;
-    this.calibrated = false;
-    this.calibSamples = [];
-    await new Promise((r) => setTimeout(r, seconds * 1000));
-    if (this.calibSamples.length) {
-      const avg = this.calibSamples.reduce((s, v) => s + v, 0) / this.calibSamples.length;
-      this.T = avg * 0.72; // 개인 EAR × 0.72
-      this.calibrated = true;
-    }
+  const ts=v.ts;
+  let blinkDuration=0, blinkSpeed=0, isBlinking=false;
+  if(closed && !S.blinkOn){ S.blinkOn=true; S.blinkStart=ts; }
+  if(!closed && S.blinkOn){
+    const dur=(ts-S.blinkStart)/1000;
+    blinkDuration=dur; blinkSpeed=dur>0?Math.min(1/dur,10):0;
+    S.blinkOn=false; isBlinking=true;
   }
 
-  pushFrame(f: VisionFrame): MetricsSnapshot | null {
-    const { t, eyes, iris, conf } = f;
-    if (conf < 0.5 || eyes.l.length < 4 || eyes.r.length < 4) return null;
+  S.perclosBuf.push(closed?1:0);
+  if(S.perclosBuf.length>60) S.perclosBuf.shift();
+  const perclos=S.perclosBuf.reduce((a,b)=>a+b,0)/Math.max(1,S.perclosBuf.length);
 
-    const earL = earFromEye(eyes.l);
-    const earR = earFromEye(eyes.r);
-    const earAvg = (earL + earR) / 2;
+  window.dispatchEvent(new CustomEvent("fm:metrics",{detail:{
+    ts,
+    ear:{L:earL,R:earR,avg:S.lastEAR,T},
+    blink:{isBlinking,durationSec:blinkDuration,speed:blinkSpeed},
+    perclos:{ratio:perclos,win:"60s"}
+  }}));
+});
 
-    // 캘리브레이션 중이면 샘플 누적
-    if (!this.calibrated) this.calibSamples.push(earAvg);
-
-    // Blink 검출
-    let blink: BlinkEvent | undefined;
-    if (this.calibrated) {
-      const under = earAvg < this.T;
-      if (under && !this.blinkActive) {
-        this.blinkActive = true;
-        this.blinkStart = t;
-      }
-      if (!under && this.blinkActive) {
-        this.blinkActive = false;
-        const duration = t - this.blinkStart;
-        blink = {
-          start: this.blinkStart,
-          end: t,
-          duration,
-          // 간단 속도 근사 (임계선 대비 변화량 / 반주기 시간)
-          closingSpeed: (this.lastEAR - this.T) / (duration / 2 || 1),
-          openingSpeed: (earAvg - this.T) / (duration / 2 || 1),
-        };
-      }
-    }
-
-    // PERCLOS(60s)
-    const now = t;
-    const cutoff = now - 60000;
-    const closed = this.calibrated && earAvg < this.T ? 1 : 0;
-    this.perclosWindow.push({ t: now, closed });
-    while (this.perclosWindow.length && this.perclosWindow[0].t < cutoff) {
-      this.perclosWindow.shift();
-    }
-    const perclos = this.perclosWindow.length
-      ? this.perclosWindow.reduce((s, v) => s + v.closed, 0) / this.perclosWindow.length
-      : 0;
-
-    // I-DT(150ms)로 fixation 판정
-    const idtCut = now - 150;
-    this.idtWindow.push({ t: now, p: iris.l });
-    while (this.idtWindow.length && this.idtWindow[0].t < idtCut) {
-      this.idtWindow.shift();
-    }
-    const xs = this.idtWindow.map((v) => v.p.x);
-    const ys = this.idtWindow.map((v) => v.p.y);
-    const disp = Math.max(
-      Math.max(...xs) - Math.min(...xs),
-      Math.max(...ys) - Math.min(...ys)
-    );
-    const isFixed = disp <= 0.01; // 화면 짧은 변 1% ≈ 정규화 0.01
-
-    // ROI 3x3 그리드
-    const rx = Math.min(2, Math.max(0, Math.floor(iris.l.x * 3)));
-    const ry = Math.min(2, Math.max(0, Math.floor(iris.l.y * 3)));
-    const roiKey = `${rx},${ry}`;
-
-    if (isFixed) {
-      if (this.lastRoi !== roiKey) {
-        this.lastRoi = roiKey;
-        this.dwellStart = now;
-      }
-    } else {
-      this.dwellStart = now; // 움직였으니 다시 카운트
-    }
-    const dwellMs = now - (this.dwellStart || now);
-
-    // stability(표준편차 근사)
-    const meanX = xs.reduce((s, v) => s + v, 0) / (xs.length || 1);
-    const meanY = ys.reduce((s, v) => s + v, 0) / (ys.length || 1);
-    const stability = Math.sqrt(
-      (xs.reduce((s, v) => s + (v - meanX) ** 2, 0) +
-        ys.reduce((s, v) => s + (v - meanY) ** 2, 0)) / ((xs.length + ys.length) || 1)
-    );
-
-    this.lastEAR = earAvg;
-
-    return {
-      t,
-      earL,
-      earR,
-      earAvg,
-      blink,
-      perclos,
-      fixation: { isFixed, dwellMs, stability, roiKey },
+export async function runCalibration(seconds=10){
+  return new Promise<number>((resolve)=>{
+    const vals:number[]=[];
+    const handler=(e:any)=>{
+      const v=e.detail as VisionEvt;
+      if(!v.valid||v.conf<0.5)return;
+      const ear=(eyeEAR(v.left.pts)+eyeEAR(v.right.pts))/2;
+      vals.push(ear);
     };
-  }
+    window.addEventListener("fm:vision",handler);
+    const start=Date.now();
+    const id=setInterval(()=>{
+      if(Date.now()-start>=seconds*1000){
+        clearInterval(id);
+        window.removeEventListener("fm:vision",handler);
+        const avg=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length):0.3;
+        S.ear0=avg; localStorage.setItem("fm_ear0",String(avg));
+        resolve(avg);
+      }
+    },200);
+  });
 }

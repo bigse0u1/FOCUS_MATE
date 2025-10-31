@@ -1,83 +1,39 @@
-// src/state/index.ts
-import type { MetricsSnapshot, StateOutput, FocusState } from "../types";
+/**
+ * fm:metrics → 상태판정(집중/전환/산만/피로/졸음) → fm:state
+ * 악화상태만 토스트 알림(쿨다운 5분)
+ */
+import { notify, toastByState } from "../ui/toast";
+type FMState='focus'|'transition'|'distract'|'fatigue'|'drowsy';
+let cur:FMState='transition';
+let lastEmit=0;
 
-// cfg 타입을 따로 정의 (typeof this.cfg 사용 지양)
-type StateConfig = {
-  perclosWarn: number;
-  perclosAlert: number;
-  hysteresis: number;
-  cooldownMs: number;
-};
+window.addEventListener("fm:metrics",(e:any)=>{
+  const det=e.detail;
+  const now=Date.now();
+  if(now-lastEmit<900)return; // ~1Hz
+  lastEmit=now;
 
-export class StateMachine {
-  private last: FocusState = "FOCUSED";
-  private lastChange = 0;
+  const ear=det.ear?.avg||0;
+  const T=det.ear?.T||0.22;
+  const P=det.perclos?.ratio||0;
+  const BD=det.blink?.durationSec||0;
 
-  private cfg: StateConfig = {
-    perclosWarn: 0.2,
-    perclosAlert: 0.4,
-    hysteresis: 5,
-    cooldownMs: 60000,
-  };
-
-  setThresholds(cfg: Partial<StateConfig>) {
-    this.cfg = { ...this.cfg, ...cfg };
+  let next:FMState='transition',score=60;
+  if(ear<T && P>0.3){ next='drowsy'; score=20; }
+  else if(P>=0.4 || BD>=0.45){ next='fatigue'; score=40; }
+  else{
+    const fix=(1-P)*100;
+    if(fix>=70){ next='focus'; score=85; }
+    else if(fix>=40){ next='transition'; score=65; }
+    else{ next='distract'; score=45; }
   }
 
-  update(m: MetricsSnapshot): StateOutput | null {
-    const reasons: string[] = [];
-    let scoreSleep = 0;
-    let scoreDistract = 0;
+  cur=next;
+  const payload={ts:now,state:cur,score,reason:{ear,P,BD}};
+  window.dispatchEvent(new CustomEvent("fm:state",{detail:payload}));
 
-    // 졸음 판정
-    if (m.perclos >= this.cfg.perclosAlert) {
-      scoreSleep = 85;
-      reasons.push("PERCLOS≥40%: DROWSY");
-    } else if (m.perclos >= this.cfg.perclosWarn) {
-      scoreSleep = 65;
-      reasons.push("PERCLOS≥20%: TIRED");
-    }
-
-    // 산만 판정
-    if (!m.fixation.isFixed || m.fixation.dwellMs < 1500) {
-      scoreDistract = 65;
-      reasons.push("dwell<1.5s: DISTRACTED");
-    } else if (m.fixation.dwellMs >= 2000) {
-      scoreDistract = Math.max(0, scoreDistract - 20);
-    }
-
-    // 상태 선택 (우선순위: 졸음 > 산만 > 집중)
-    let state: FocusState = "FOCUSED";
-    let score = 0;
-    if (scoreSleep >= 75) {
-      state = "DROWSY";
-      score = scoreSleep;
-    } else if (scoreSleep >= 60) {
-      state = "TIRED";
-      score = scoreSleep;
-    } else if (scoreDistract >= 60) {
-      state = "DISTRACTED";
-      score = scoreDistract;
-    }
-
-    // 히스테리시스
-    if (this.last !== state) {
-      const need = this.cfg.hysteresis;
-      const prevScore = 50;
-      if (score < prevScore + need) state = this.last;
-    }
-
-    // 쿨다운
-    const now = m.t;
-    if (state === this.last && now - this.lastChange < this.cfg.cooldownMs) {
-      return null;
-    }
-
-    if (state !== this.last) {
-      this.last = state;
-      this.lastChange = now;
-    }
-
-    return { t: m.t, state, score, reason: reasons };
+  if(['distract','fatigue','drowsy'].includes(cur)){
+    const t=toastByState[cur];
+    if(t) notify(t.msg,t.color,cur,5*60*1000);
   }
-}
+});
