@@ -42,6 +42,13 @@
 
     <section id="reportPane">
       <div id="reportDaily" class="report active">
+
+        <!-- ✅ 1시간/24시간 토글 버튼 -->
+        <div class="daily-toolbar">
+          <button id="btnDaily1h"  class="tab small">1시간</button>
+          <button id="btnDaily24h" class="tab small active">24시간</button>
+        </div>
+
         <div class="cards">
           <div class="card">평균 집중도 <b id="avgFocusToday">-</b></div>
           <div class="card">총 집중시간 <b id="totalFocusToday">-</b></div>
@@ -63,6 +70,7 @@
     </section>
   </main>
 
+  <!-- 진입점: dev.ts (Vision→Metrics→State→Main) -->
   <script type="module" src="/src/dev.ts"></script>
 </body>
 </html>
