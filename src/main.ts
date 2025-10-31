@@ -23,7 +23,7 @@ export async function endSession(){
   const today0 = new Date(); today0.setHours(0,0,0,0);
   const frames = await db.frames.where('ts').between(today0.getTime(), now, true, true).toArray();
   const avg = frames.length
-    ? Math.round(frames.reduce((a:number,b)=>a+(b as any).focusScore,0)/frames.length)
+    ? Math.round(frames.reduce((a:number,b:any)=>a+b.focusScore,0)/frames.length)
     : 0;
   const focusMin = Math.round(frames.filter((f:any)=>f.state==='focus').length/60);
   const drowsyMin = Math.round(frames.filter((f:any)=>f.state==='drowsy').length/60);
@@ -36,7 +36,7 @@ export async function endSession(){
   currentSessionId = "";
 }
 
-// 버튼 이벤트
+// 헤더 버튼
 document.getElementById("btnStart")?.addEventListener("click", startSession);
 document.getElementById("btnEnd")?.addEventListener("click", endSession);
 document.getElementById("btnCalib")?.addEventListener("click", async()=>{
@@ -53,7 +53,19 @@ document.getElementById("btnCalib")?.addEventListener("click", async()=>{
   }
 });
 
-// fm:state → DB 저장 + KPI 출력
+// ✅ 일 리포트: 1시간/24시간 토글
+document.getElementById("btnDaily1h")?.addEventListener("click", ()=>{
+  document.getElementById("btnDaily1h")?.classList.add("active");
+  document.getElementById("btnDaily24h")?.classList.remove("active");
+  renderDaily(new Date(), "1h");
+});
+document.getElementById("btnDaily24h")?.addEventListener("click", ()=>{
+  document.getElementById("btnDaily24h")?.classList.add("active");
+  document.getElementById("btnDaily1h")?.classList.remove("active");
+  renderDaily(new Date(), "24h");
+});
+
+// fm:state → DB 저장 + KPI
 window.addEventListener("fm:state", (e:any)=>{
   const { ts, state, score } = e.detail;
   db.frames.put({ ts, state, focusScore: score });
@@ -73,11 +85,11 @@ async function updateLiveCounters(){
 }
 function mapKor(s:string){ return ({focus:"집중",transition:"전환",distract:"산만",fatigue:"피로",drowsy:"졸음"} as any)[s] || s }
 
-// 탭 전환 시 리포트 갱신
-renderDaily();
+// 탭 전환 시 렌더
+renderDaily(); // 초기 24h
 window.addEventListener("fm:tab",(e:any)=>{
   const tab = e.detail as string;
-  if(tab==="daily") renderDaily();
+  if(tab==="daily") renderDaily();          // 현재 뷰 유지(모듈 내부 변수로 저장됨)
   else if(tab==="weekly") renderWeekly();
   else if(tab==="monthly") renderMonthly();
   else if(tab==="recommend") renderRecommend();
