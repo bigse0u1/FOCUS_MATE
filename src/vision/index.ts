@@ -6,7 +6,7 @@
  */
 
 import { FaceMesh } from "@mediapipe/face_mesh";
-import { Camera } from "@mediapipe/camera_utils";
+import { Camera } from "@mediapipe/camera_utils"
 
 type Pt = { x: number; y: number };
 type Landmark = { x: number; y: number; z: number; visibility?: number };
