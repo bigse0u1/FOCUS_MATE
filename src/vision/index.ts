@@ -1,12 +1,8 @@
 /**
  * vision/index.ts
- * MediaPipe FaceMesh 기반 랜드마크 추출기
- * - fm:vision CustomEvent 송출 (기존 스키마 유지)
- * - fm:camera-stream 이벤트로 스트림 공유 (디버그 탭에서 사용)
+ * Mediapipe FaceMesh 기반 실시간 랜드마크 추출기
+ * - Netlify 배포 환경에서도 확실히 로드될 수 있도록 waitForMediapipe() 포함
  */
-
-import { FaceMesh } from "@mediapipe/face_mesh";
-import { Camera } from "@mediapipe/camera_utils"
 
 type Pt = { x: number; y: number };
 type Landmark = { x: number; y: number; z: number; visibility?: number };
@@ -16,37 +12,56 @@ const RIGHT_EYE_IDX = [362, 385, 387, 263, 373, 380];
 
 const VIDEO_WIDTH = 640;
 const VIDEO_HEIGHT = 480;
-const MAX_FACES = 1;
-const MIN_DET_CONF = 0.5;
-const MIN_TRACK_CONF = 0.5;
-const REFINE_LANDMARKS = true;
-
+const TARGET_FPS = 15;
 const VISIBILITY_THRESH = 0.6;
-const TARGET_EVENT_FPS = 15;
+
+// ✅ Mediapipe가 로드될 때까지 기다림
+async function waitForMediapipe(timeout = 8000): Promise<void> {
+  const start = Date.now();
+  return new Promise((resolve, reject) => {
+    (function check() {
+      const w = window as any;
+      if (w.FaceMesh && w.Camera) return resolve();
+      if (Date.now() - start > timeout)
+        return reject(new Error("Mediapipe not loaded"));
+      requestAnimationFrame(check);
+    })();
+  });
+}
 
 export class Vision {
   private video: HTMLVideoElement | null = null;
-  private camera: Camera | null = null;
-  private faceMesh: FaceMesh | null = null;
+  private camera: any | null = null;
+  private faceMesh: any | null = null;
   private lastEmit = 0;
 
   async start() {
     this.video = document.getElementById("videoEl") as HTMLVideoElement | null;
     if (!this.video) throw new Error("videoEl not found");
 
+    // ✅ 1) 카메라 권한 요청
     const stream = await this.ensureCameraPermission();
-    // 디버그 탭에 스트림 공유
-    window.dispatchEvent(new CustomEvent('fm:camera-stream', { detail: { stream } }));
+    window.dispatchEvent(
+      new CustomEvent("fm:camera-stream", { detail: { stream } })
+    );
 
+    // ✅ 2) Mediapipe 로드 대기 (Netlify 대비)
+    await waitForMediapipe();
+
+    // ✅ 3) 전역 객체로부터 FaceMesh / Camera 참조
+    const FaceMesh = (window as any).FaceMesh;
+    const Camera = (window as any).Camera;
+
+    // ✅ 4) FaceMesh 설정
     this.faceMesh = new FaceMesh({
       locateFile: (file: string) =>
         `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
     });
     this.faceMesh.setOptions({
-      maxNumFaces: MAX_FACES,
-      refineLandmarks: REFINE_LANDMARKS,
-      minDetectionConfidence: MIN_DET_CONF,
-      minTrackingConfidence: MIN_TRACK_CONF,
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
     });
 
     this.faceMesh.onResults((results: any) => {
@@ -54,7 +69,7 @@ export class Vision {
         this.emitFrame(null, null, 0, false);
         return;
       }
-      const lm: Landmark[] = results.multiFaceLandmarks[0] as Landmark[];
+      const lm: Landmark[] = results.multiFaceLandmarks[0];
       const leftPts = pickEyePts(lm, LEFT_EYE_IDX);
       const rightPts = pickEyePts(lm, RIGHT_EYE_IDX);
 
@@ -62,14 +77,14 @@ export class Vision {
       const valid = conf >= VISIBILITY_THRESH && leftPts.length === 6 && rightPts.length === 6;
 
       const now = performance.now();
-      const minInterval = 1000 / TARGET_EVENT_FPS;
-      if (now - this.lastEmit >= minInterval) {
+      const interval = 1000 / TARGET_FPS;
+      if (now - this.lastEmit >= interval) {
         this.emitFrame(leftPts, rightPts, conf, valid);
         this.lastEmit = now;
       }
     });
 
-    // CameraUtils로 rAF 루프 연결
+    // ✅ 5) Camera 연결
     this.camera = new Camera(this.video, {
       onFrame: async () => {
         await this.faceMesh!.send({ image: this.video! });
@@ -79,18 +94,18 @@ export class Vision {
     });
 
     await this.camera.start();
-    console.log("[Vision] Started (MediaPipe FaceMesh)");
+    console.log("[Vision] ✅ Started with Mediapipe CDN");
   }
 
   stop() {
-    try { this.camera?.stop(); } catch {}
+    try {
+      this.camera?.stop?.();
+    } catch {}
     const stream = this.video?.srcObject as MediaStream | null;
     stream?.getTracks().forEach((t) => t.stop());
     if (this.video) this.video.srcObject = null;
-    // @ts-ignore
-    this.faceMesh?.close?.();
-    this.camera = null;
     this.faceMesh = null;
+    this.camera = null;
     console.log("[Vision] Stopped");
   }
 
@@ -108,7 +123,7 @@ export class Vision {
       }
       return stream;
     } catch (err) {
-      alert("카메라 권한을 허용해주세요. (브라우저 주소창 왼쪽 🔒 → Camera: Allow)");
+      alert("카메라 권한을 허용해주세요. (브라우저 주소창 왼쪽 🔒 → Camera: 허용)");
       throw err;
     }
   }
@@ -116,7 +131,7 @@ export class Vision {
   private emitFrame(left: Pt[] | null, right: Pt[] | null, conf: number, valid: boolean) {
     const detail = {
       ts: Date.now(),
-      fps: TARGET_EVENT_FPS,
+      fps: TARGET_FPS,
       left: { pts: left ?? [] },
       right: { pts: right ?? [] },
       conf,
@@ -141,12 +156,8 @@ function computeConfidence(lm: Landmark[]): number {
   let sum = 0, n = 0;
   for (const p of lm) {
     const v = typeof p.visibility === "number" ? p.visibility : 1;
-    sum += clamp01(v);
+    sum += Math.max(0, Math.min(1, v));
     n++;
   }
   return n > 0 ? sum / n : 0;
-}
-
-function clamp01(v: number) {
-  return Math.max(0, Math.min(1, v));
 }
