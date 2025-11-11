@@ -1,39 +1,116 @@
 /**
- * fm:metrics → 상태판정(집중/전환/산만/피로/졸음) → fm:state
- * 악화상태만 토스트 알림(쿨다운 5분)
+ * state/index.ts
+ * - fm:metrics를 받아 집중도 점수와 상태 배지 산정
+ * - 히스테리시스로 상태 출렁임 완화
+ * - fm:state 이벤트 송출
  */
-import { notify, toastByState } from "../ui/toast";
-type FMState='focus'|'transition'|'distract'|'fatigue'|'drowsy';
-let cur:FMState='transition';
-let lastEmit=0;
 
-window.addEventListener("fm:metrics",(e:any)=>{
-  const det=e.detail;
-  const now=Date.now();
-  if(now-lastEmit<900)return; // ~1Hz
-  lastEmit=now;
+type Metrics = {
+  ts: number;
+  valid: boolean;
+  conf: number;
+  earL: number | null;
+  earR: number | null;
+  earAvg: number | null;
+  ear0: number | null;
+  earThresh: number | null;
+  perclos: number;       // 0~1
+  blinkRate: number;     // /min
+  gazeDev: number;       // 0~1
+};
 
-  const ear=det.ear?.avg||0;
-  const T=det.ear?.T||0.22;
-  const P=det.perclos?.ratio||0;
-  const BD=det.blink?.durationSec||0;
+// ======= 설정 =======
 
-  let next:FMState='transition',score=60;
-  if(ear<T && P>0.3){ next='drowsy'; score=20; }
-  else if(P>=0.4 || BD>=0.45){ next='fatigue'; score=40; }
-  else{
-    const fix=(1-P)*100;
-    if(fix>=70){ next='focus'; score=85; }
-    else if(fix>=40){ next='transition'; score=65; }
-    else{ next='distract'; score=45; }
+// 점수식 가중치
+const W_PERCLOS = 0.42;  // p
+const W_BLINK   = 0.18;  // b
+const W_GAZE    = 0.40;  // g
+
+// blinkRate 정규화 기준치(분당)
+const BLINK_NORM = 30;
+
+// 점수 EMA
+const SCORE_EMA_ALPHA = 0.2;
+
+// 상태 히스테리시스 임계
+const THRESH_FOCUS_ENTER = 72;
+const THRESH_FOCUS_EXIT  = 68;
+
+const THRESH_DISTRACT_ENTER = 50;
+const THRESH_DISTRACT_EXIT  = 55;
+
+const THRESH_DROWSY_ENTER = 30;
+const THRESH_DROWSY_EXIT  = 35;
+
+// ======= 내부 상태 =======
+let inited = false;
+let emaScore = 0;
+let currState: 'focus' | 'transition' | 'distract' | 'drowsy' = 'transition';
+
+function clamp01(v: number) { return Math.max(0, Math.min(1, v)); }
+function ema(prev: number, value: number, alpha: number) {
+  if (!isFinite(prev) || prev === 0) return value;
+  return prev + alpha * (value - prev);
+}
+
+function computeScore(m: Metrics) {
+  const p = clamp01(m.perclos);                          // 0..1
+  const b = clamp01(m.blinkRate / BLINK_NORM);           // 0..1
+  const g = clamp01(m.gazeDev);                          // 0..1
+  let score = 100 - (W_PERCLOS * p + W_BLINK * b + W_GAZE * g) * 100;
+  if (!isFinite(score)) score = 0;
+  return clamp01(score / 100) * 100;
+}
+
+function nextStateFrom(score: number) {
+  // 히스테리시스 적용
+  switch (currState) {
+    case 'focus':
+      if (score < THRESH_FOCUS_EXIT) return 'transition';
+      return 'focus';
+    case 'transition':
+      if (score >= THRESH_FOCUS_ENTER) return 'focus';
+      if (score < THRESH_DISTRACT_ENTER) return 'distract';
+      return 'transition';
+    case 'distract':
+      if (score >= THRESH_DISTRACT_EXIT) return 'transition';
+      if (score < THRESH_DROWSY_ENTER) return 'drowsy';
+      return 'distract';
+    case 'drowsy':
+      if (score >= THRESH_DROWSY_EXIT) return 'distract';
+      return 'drowsy';
   }
+}
 
-  cur=next;
-  const payload={ts:now,state:cur,score,reason:{ear,P,BD}};
-  window.dispatchEvent(new CustomEvent("fm:state",{detail:payload}));
+export function initState() {
+  if (inited) return;
+  inited = true;
 
-  if(['distract','fatigue','drowsy'].includes(cur)){
-    const t=toastByState[cur];
-    if(t) notify(t.msg,t.color,cur,5*60*1000);
-  }
-});
+  window.addEventListener('fm:metrics', (ev: any) => {
+    const m = ev.detail as Metrics;
+
+    // 점수 계산 (+ EMA 평활)
+    const rawScore = computeScore(m);
+    emaScore = ema(emaScore, rawScore, SCORE_EMA_ALPHA);
+
+    // 상태 산정 (EMA 점수 기준)
+    const state = nextStateFrom(emaScore);
+    currState = state as any;
+
+    // 송출
+    const detail = {
+      ts: m.ts,
+      score: emaScore,                // 0~100
+      state,                          // 'focus' | 'transition' | 'distract' | 'drowsy'
+      perclos: m.perclos,             // 0~1
+      blinkRate: m.blinkRate,         // /min
+      gazeDev: m.gazeDev,             // 0~1
+      earAvg: m.earAvg,
+      ear0: m.ear0,
+      earThresh: m.earThresh,
+      valid: m.valid,
+      conf: m.conf
+    };
+    window.dispatchEvent(new CustomEvent('fm:state', { detail }));
+  });
+}
