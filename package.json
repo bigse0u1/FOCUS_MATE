@@ -11,7 +11,9 @@
   "dependencies": {
     "chart.js": "4.5.1",
     "dexie": "4.2.1",
-    "toastify-js": "1.12.0"
+    "toastify-js": "1.12.0",
+    "@mediapipe/face_mesh": "^0.4.1633559619",
+    "@mediapipe/camera_utils": "^0.3.1675466862"
   },
   "devDependencies": {
     "@types/toastify-js": "1.12.4",
