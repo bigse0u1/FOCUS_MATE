@@ -16,17 +16,16 @@
     </div>
   </header>
 
-  <nav class="tabs">
-    <button data-tab="daily"    class="tab active">일 리포트</button>
-    <button data-tab="weekly"   class="tab">주 리포트</button>
-    <button data-tab="monthly"  class="tab">월 리포트</button>
-    <button data-tab="recommend" class="tab">추천 시간대</button>
-    <!-- NEW: 환경설정 탭 -->
-    <button data-tab="settings" class="tab">환경설정</button>
+  <nav class="tabs" role="tablist" aria-label="리포트 탭">
+    <button data-tab="daily"     class="tab active" role="tab" aria-selected="true">일 리포트</button>
+    <button data-tab="weekly"    class="tab" role="tab" aria-selected="false">주 리포트</button>
+    <button data-tab="monthly"   class="tab" role="tab" aria-selected="false">월 리포트</button>
+    <button data-tab="recommend" class="tab" role="tab" aria-selected="false">추천 시간대</button>
+    <button data-tab="settings"  class="tab" role="tab" aria-selected="false">환경설정</button>
   </nav>
 
   <main id="layout">
-    <!-- 좌측: 라이브 뷰, 우측: 리포트 패널은 기존 그대로 -->
+    <!-- 좌측: 라이브 뷰 -->
     <section id="livePane">
       <div class="camera">
         <video id="videoEl" autoplay playsinline muted></video>
@@ -43,9 +42,9 @@
       </div>
     </section>
 
+    <!-- 우측: 리포트 패널 -->
     <section id="reportPane">
       <div id="reportDaily" class="report active">
-        <!-- 1시간/24시간 토글 -->
         <div class="daily-toolbar">
           <button id="btnDaily1h"  class="tab small">1시간</button>
           <button id="btnDaily24h" class="tab small active">24시간</button>
@@ -59,8 +58,13 @@
         <canvas id="dailyTimeline" height="120"></canvas>
       </div>
 
-      <div id="reportWeekly" class="report"><canvas id="weeklyBar" height="150"></canvas></div>
-      <div id="reportMonthly" class="report"><canvas id="monthlyLine" height="150"></canvas></div>
+      <div id="reportWeekly" class="report">
+        <canvas id="weeklyBar" height="150"></canvas>
+      </div>
+
+      <div id="reportMonthly" class="report">
+        <canvas id="monthlyLine" height="150"></canvas>
+      </div>
 
       <div id="reportRecommend" class="report">
         <table class="rank">
@@ -69,11 +73,12 @@
         </table>
       </div>
 
-      <!-- NEW: 환경설정(디버그) 패널 -->
+      <!-- 환경설정(디버그) -->
       <div id="reportSettings" class="report">
         <div class="settings-toolbar">
           <label class="switch">
-            <input id="toggleLM" type="checkbox" />
+            <!-- ✅ 코드와 일치: toggleLm -->
+            <input id="toggleLm" type="checkbox" />
             <span class="slider"></span>
             <span class="switch-label">랜드마크 표시</span>
           </label>
@@ -82,13 +87,14 @@
         <div class="settings-grid">
           <div class="card">
             <h3>랜드마크 미리보기</h3>
-            <canvas id="lmCanvas" width="520" height="390"></canvas>
+            <!-- 반응형은 CSS에서 제어 (width/height 속성 제거) -->
+            <canvas id="lmCanvas"></canvas>
             <div class="hint">빨간 점: 눈 주변 6포인트(좌/우)</div>
           </div>
 
           <div class="card">
             <h3>카메라 미리보기</h3>
-            <video id="debugVideo" autoplay playsinline muted style="width:100%;background:#000;border-radius:8px"></video>
+            <video id="debugVideo" autoplay playsinline muted></video>
           </div>
         </div>
 
@@ -111,10 +117,13 @@
     </section>
   </main>
 
-  <!-- 반드시 main.ts 로드 (버튼 리스너 등 전부 여기 있음) -->
-  <script type="module" src="/src/main.ts"></script>
-  <!-- 디버그 탭을 별도 파일로 뺀 경우에만 추가로 로드 -->
-  <script type="module" src="/src/debug.ts"></script>
+  <!-- ✅ Mediapipe CDN: Netlify에서 반드시 main.ts보다 먼저 로드 -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 
+  <!-- 앱 스크립트 -->
+  <script type="module" src="/src/main.ts"></script>
+  <!-- main.ts 안에서 debug를 import하지 않는 구조라면 아래 줄 유지, 이미 import했다면 제거 -->
+  <script type="module" src="/src/debug.ts"></script>
 </body>
 </html>
