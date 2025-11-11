@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>FocusMate</title>
+  <link rel="stylesheet" href="/src/style.css"/>
+</head>
+<body>
+  <header id="topbar">
+    <div class="left"><h1>FocusMate</h1></div>
+    <div class="right">
+      <button id="btnCalib" class="tab">캘리브레이션 시작</button>
+      <button id="btnStart" class="tab">세션 시작</button>
+      <button id="btnEnd" class="tab">세션 종료</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="daily"    class="tab active">일 리포트</button>
+    <button data-tab="weekly"   class="tab">주 리포트</button>
+    <button data-tab="monthly"  class="tab">월 리포트</button>
+    <button data-tab="recommend" class="tab">추천 시간대</button>
+    <!-- NEW: 환경설정 탭 -->
+    <button data-tab="settings" class="tab">환경설정</button>
+  </nav>
+
+  <main id="layout">
+    <!-- 좌측: 라이브 뷰, 우측: 리포트 패널은 기존 그대로 -->
+    <section id="livePane">
+      <div class="camera">
+        <video id="videoEl" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div id="calibDot" class="dot hidden"></div>
+      </div>
+      <div class="liveStats">
+        <div id="stateBadge" class="badge">-</div>
+        <div class="kpis">
+          <div>집중도 <span id="focusScore">0</span>%</div>
+          <div>졸음 <span id="drowsyMin">0</span>분</div>
+          <div>산만 <span id="distractMin">0</span>분</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="reportPane">
+      <div id="reportDaily" class="report active">
+        <!-- 1시간/24시간 토글 -->
+        <div class="daily-toolbar">
+          <button id="btnDaily1h"  class="tab small">1시간</button>
+          <button id="btnDaily24h" class="tab small active">24시간</button>
+        </div>
+        <div class="cards">
+          <div class="card">평균 집중도 <b id="avgFocusToday">-</b></div>
+          <div class="card">총 집중시간 <b id="totalFocusToday">-</b></div>
+          <div class="card">졸음시간 <b id="drowsyToday">-</b></div>
+          <div class="card">산만시간 <b id="distractToday">-</b></div>
+        </div>
+        <canvas id="dailyTimeline" height="120"></canvas>
+      </div>
+
+      <div id="reportWeekly" class="report"><canvas id="weeklyBar" height="150"></canvas></div>
+      <div id="reportMonthly" class="report"><canvas id="monthlyLine" height="150"></canvas></div>
+
+      <div id="reportRecommend" class="report">
+        <table class="rank">
+          <thead><tr><th>순위</th><th>추천 시간대(2h)</th><th>최근 7일 집중시간</th></tr></thead>
+          <tbody id="recBody"></tbody>
+        </table>
+      </div>
+
+      <!-- NEW: 환경설정(디버그) 패널 -->
+      <div id="reportSettings" class="report">
+        <div class="settings-toolbar">
+          <label class="switch">
+            <input id="toggleLM" type="checkbox" />
+            <span class="slider"></span>
+            <span class="switch-label">랜드마크 표시</span>
+          </label>
+        </div>
+
+        <div class="settings-grid">
+          <div class="card">
+            <h3>랜드마크 미리보기</h3>
+            <canvas id="lmCanvas" width="520" height="390"></canvas>
+            <div class="hint">빨간 점: 눈 주변 6포인트(좌/우)</div>
+          </div>
+
+          <div class="card">
+            <h3>카메라 미리보기</h3>
+            <video id="debugVideo" autoplay playsinline muted style="width:100%;background:#000;border-radius:8px"></video>
+          </div>
+        </div>
+
+        <div class="card metrics-table">
+          <h3>측정값</h3>
+          <table>
+            <tbody>
+              <tr><td>Confidence</td><td><b id="dbgConf">-</b></td></tr>
+              <tr><td>Valid</td><td><b id="dbgValid">-</b></td></tr>
+              <tr><td>FPS(emit)</td><td><b id="dbgFps">-</b></td></tr>
+              <tr><td>EAR(L/R/avg)</td><td><b id="dbgEAR">-</b></td></tr>
+              <tr><td>PERCLOS(1m)</td><td><b id="dbgPERCLOS">-</b></td></tr>
+              <tr><td>Gaze dev</td><td><b id="dbgGaze">-</b></td></tr>
+              <tr><td>Pose (yaw/pitch/roll)</td><td><b id="dbgPose">-</b></td></tr>
+            </tbody>
+          </table>
+          <div class="hint">* EAR/PERCLOS/Gaze/Pose는 연결된 모듈이 있으면 자동 갱신, 없으면 '-' 표시</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 반드시 main.ts 로드 (버튼 리스너 등 전부 여기 있음) -->
+  <script type="module" src="/src/main.ts"></script>
+  <!-- 디버그 탭을 별도 파일로 뺀 경우에만 추가로 로드 -->
+  <script type="module" src="/src/debug.ts"></script>
+
+</body>
+</html>
