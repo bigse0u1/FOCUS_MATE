@@ -1,129 +1,220 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>FocusMate</title>
-  <link rel="stylesheet" href="/src/style.css"/>
-</head>
-<body>
-  <header id="topbar">
-    <div class="left"><h1>FocusMate</h1></div>
-    <div class="right">
-      <button id="btnCalib" class="tab">캘리브레이션 시작</button>
-      <button id="btnStart" class="tab">세션 시작</button>
-      <button id="btnEnd" class="tab">세션 종료</button>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FocusMate</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- ✅ 처음 진입 랜딩 오버레이 -->
+    <div id="landingOverlay" class="landing-overlay">
+      <div class="landing-card">
+        <h1 class="landing-title">FocusMate</h1>
+        <p class="landing-sub">
+          카메라를 이용해 오늘의 집중/졸음/산만 패턴을 기록해 드려요.<br />
+          화면을 벗어나는 시선과 눈 깜빡임을 분석해서 집중을 도와줍니다.
+        </p>
+        <button id="btnLandingStart" class="landing-btn">시작하기</button>
+      </div>
     </div>
-  </header>
 
-  <nav class="tabs" role="tablist" aria-label="리포트 탭">
-    <button data-tab="daily"     class="tab active" role="tab" aria-selected="true">일 리포트</button>
-    <button data-tab="weekly"    class="tab" role="tab" aria-selected="false">주 리포트</button>
-    <button data-tab="monthly"   class="tab" role="tab" aria-selected="false">월 리포트</button>
-    <button data-tab="recommend" class="tab" role="tab" aria-selected="false">추천 시간대</button>
-    <button data-tab="settings"  class="tab" role="tab" aria-selected="false">환경설정</button>
-  </nav>
+    <!-- ✅ 2단계: 중앙 카메라 + 3×3 집중 구역 선택 화면 -->
+    <div id="setupScreen" class="setup hidden">
+      <div class="setup-card">
+        <h2 class="setup-title">집중할 위치를 선택해주세요</h2>
+        <p class="setup-sub">
+          카메라 화면을 3×3으로 나눴어요. 공부할 때 주로 보는 위치(모니터, 교재 등)를
+          클릭해서 선택한 뒤 <b>확인</b>을 누르면,<br />
+          그 구역을 벗어났을 때 ‘산만’ 판단에 사용합니다.
+        </p>
 
-  <main id="layout">
-    <!-- 좌측: 라이브 뷰 -->
-    <section id="livePane">
-      <div class="camera">
-        <video id="videoEl" autoplay playsinline muted></video>
-        <canvas id="overlay"></canvas>
-        <div id="calibDot" class="dot hidden"></div>
-      </div>
-      <div class="liveStats">
-        <div id="stateBadge" class="badge">-</div>
-        <div class="kpis">
-          <div>집중도 <span id="focusScore">0</span>%</div>
-          <div>졸음 <span id="drowsyMin">0</span>분</div>
-          <div>산만 <span id="distractMin">0</span>분</div>
-        </div>
-      </div>
-    </section>
+        <div class="setup-video-wrap">
+          <video id="setupVideo" autoplay playsinline muted></video>
 
-    <!-- 우측: 리포트 패널 -->
-    <section id="reportPane">
-      <div id="reportDaily" class="report active">
-        <div class="daily-toolbar">
-          <button id="btnDaily1h"  class="tab small">1시간</button>
-          <button id="btnDaily24h" class="tab small active">24시간</button>
-        </div>
-        <div class="cards">
-          <div class="card">평균 집중도 <b id="avgFocusToday">-</b></div>
-          <div class="card">총 집중시간 <b id="totalFocusToday">-</b></div>
-          <div class="card">졸음시간 <b id="drowsyToday">-</b></div>
-          <div class="card">산만시간 <b id="distractToday">-</b></div>
-        </div>
-        <canvas id="dailyTimeline" height="120"></canvas>
-      </div>
+          <!-- 카메라 위에 겹치는 3×3 격자 -->
+          <div class="focuszone-overlay-video">
+            <div class="focuszone-grid">
+              <!-- row:0~2, col:0~2 -->
+              <button class="fz-cell" data-row="0" data-col="0"></button>
+              <button class="fz-cell" data-row="0" data-col="1"></button>
+              <button class="fz-cell" data-row="0" data-col="2"></button>
 
-      <div id="reportWeekly" class="report">
-        <canvas id="weeklyBar" height="150"></canvas>
-      </div>
+              <button class="fz-cell" data-row="1" data-col="0"></button>
+              <button class="fz-cell" data-row="1" data-col="1"></button>
+              <button class="fz-cell" data-row="1" data-col="2"></button>
 
-      <div id="reportMonthly" class="report">
-        <canvas id="monthlyLine" height="150"></canvas>
-      </div>
-
-      <div id="reportRecommend" class="report">
-        <table class="rank">
-          <thead><tr><th>순위</th><th>추천 시간대(2h)</th><th>최근 7일 집중시간</th></tr></thead>
-          <tbody id="recBody"></tbody>
-        </table>
-      </div>
-
-      <!-- 환경설정(디버그) -->
-      <div id="reportSettings" class="report">
-        <div class="settings-toolbar">
-          <label class="switch">
-            <!-- ✅ 코드와 일치: toggleLm -->
-            <input id="toggleLm" type="checkbox" />
-            <span class="slider"></span>
-            <span class="switch-label">랜드마크 표시</span>
-          </label>
-        </div>
-
-        <div class="settings-grid">
-          <div class="card">
-            <h3>랜드마크 미리보기</h3>
-            <!-- 반응형은 CSS에서 제어 (width/height 속성 제거) -->
-            <canvas id="lmCanvas"></canvas>
-            <div class="hint">빨간 점: 눈 주변 6포인트(좌/우)</div>
-          </div>
-
-          <div class="card">
-            <h3>카메라 미리보기</h3>
-            <video id="debugVideo" autoplay playsinline muted></video>
+              <button class="fz-cell" data-row="2" data-col="0"></button>
+              <button class="fz-cell" data-row="2" data-col="1"></button>
+              <button class="fz-cell" data-row="2" data-col="2"></button>
+            </div>
           </div>
         </div>
 
-        <div class="card metrics-table">
-          <h3>측정값</h3>
-          <table>
-            <tbody>
-              <tr><td>Confidence</td><td><b id="dbgConf">-</b></td></tr>
-              <tr><td>Valid</td><td><b id="dbgValid">-</b></td></tr>
-              <tr><td>FPS(emit)</td><td><b id="dbgFps">-</b></td></tr>
-              <tr><td>EAR(L/R/avg)</td><td><b id="dbgEAR">-</b></td></tr>
-              <tr><td>PERCLOS(1m)</td><td><b id="dbgPERCLOS">-</b></td></tr>
-              <tr><td>Gaze dev</td><td><b id="dbgGaze">-</b></td></tr>
-              <tr><td>Pose (yaw/pitch/roll)</td><td><b id="dbgPose">-</b></td></tr>
-            </tbody>
+        <div class="focuszone-footer">
+          <button id="btnFocusZoneSkip" class="tab small">건너뛰기</button>
+          <button id="btnFocusZoneConfirm" class="tab small active">확인</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ✅ 메인 헤더 / 탭 / 레이아웃 (처음에는 layout을 숨겨둠) -->
+    <header id="topbar">
+      <div class="left"><h1>FocusMate</h1></div>
+      <div class="right">
+        <button id="btnCalib" class="tab">캘리브레이션 시작</button>
+        <button id="btnStart" class="tab">세션 시작</button>
+        <button id="btnEnd" class="tab">세션 종료</button>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="리포트 탭">
+      <button data-tab="daily" class="tab active" role="tab" aria-selected="true">
+        일 리포트
+      </button>
+      <button data-tab="weekly" class="tab" role="tab" aria-selected="false">
+        주 리포트
+      </button>
+      <button data-tab="monthly" class="tab" role="tab" aria-selected="false">
+        월 리포트
+      </button>
+      <button data-tab="recommend" class="tab" role="tab" aria-selected="false">
+        추천 시간대
+      </button>
+      <button data-tab="settings" class="tab" role="tab" aria-selected="false">
+        환경설정
+      </button>
+    </nav>
+
+    <main id="layout" class="hidden">
+      <!-- 좌측: 라이브 뷰 -->
+      <section id="livePane">
+        <div class="camera">
+          <video id="videoEl" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <div id="calibDot" class="dot hidden"></div>
+        </div>
+
+        <div class="liveStats">
+          <div id="stateBadge" class="badge">-</div>
+          <div class="kpis">
+            <div>집중도 <span id="focusScore">0</span>%</div>
+            <div>졸음 <span id="drowsyMin">0</span>분</div>
+            <div>산만 <span id="distractMin">0</span>분</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 우측: 리포트 패널 -->
+      <section id="reportPane">
+        <!-- 일 리포트 -->
+        <div id="reportDaily" class="report active">
+          <div class="daily-toolbar">
+            <button id="btnDaily1h" class="tab small">1시간</button>
+            <button id="btnDaily24h" class="tab small active">24시간</button>
+          </div>
+          <div class="cards">
+            <div class="card">평균 집중도 <b id="avgFocusToday">-</b></div>
+            <div class="card">총 집중시간 <b id="totalFocusToday">-</b></div>
+            <div class="card">졸음시간 <b id="drowsyToday">-</b></div>
+            <div class="card">산만시간 <b id="distractToday">-</b></div>
+          </div>
+          <canvas id="dailyTimeline"></canvas>
+        </div>
+
+        <!-- 주 / 월 / 추천 -->
+        <div id="reportWeekly" class="report">
+          <canvas id="weeklyBar" height="150"></canvas>
+        </div>
+
+        <div id="reportMonthly" class="report">
+          <canvas id="monthlyLine" height="150"></canvas>
+        </div>
+
+        <div id="reportRecommend" class="report">
+          <table class="rank">
+            <thead>
+              <tr>
+                <th>순위</th>
+                <th>추천 시간대(2h)</th>
+                <th>최근 7일 집중시간</th>
+              </tr>
+            </thead>
+            <tbody id="recBody"></tbody>
           </table>
-          <div class="hint">* EAR/PERCLOS/Gaze/Pose는 연결된 모듈이 있으면 자동 갱신, 없으면 '-' 표시</div>
         </div>
-      </div>
-    </section>
-  </main>
 
-  <!-- ✅ Mediapipe CDN: Netlify에서 반드시 main.ts보다 먼저 로드 -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+        <!-- 환경설정(디버그) -->
+        <div id="reportSettings" class="report">
+          <div class="settings-toolbar">
+            <label class="switch">
+              <input id="toggleLm" type="checkbox" />
+              <span class="slider"></span>
+              <span class="switch-label">랜드마크 표시</span>
+            </label>
+          </div>
 
-  <!-- 앱 스크립트 -->
-  <script type="module" src="/src/main.ts"></script>
-  <!-- main.ts 안에서 debug를 import하지 않는 구조라면 아래 줄 유지, 이미 import했다면 제거 -->
-  <script type="module" src="/src/debug.ts"></script>
-</body>
+          <div class="settings-grid">
+            <div class="card">
+              <h3>랜드마크 미리보기</h3>
+              <canvas id="lmCanvas"></canvas>
+              <div class="hint">빨간 점: 눈 주변 6포인트(좌/우)</div>
+            </div>
+
+            <div class="card">
+              <h3>카메라 미리보기</h3>
+              <video id="debugVideo" autoplay playsinline muted></video>
+            </div>
+          </div>
+
+          <div class="card metrics-table">
+            <h3>측정값</h3>
+            <table>
+              <tbody>
+                <tr>
+                  <td>Confidence</td>
+                  <td><b id="dbgConf">-</b></td>
+                </tr>
+                <tr>
+                  <td>Valid</td>
+                  <td><b id="dbgValid">-</b></td>
+                </tr>
+                <tr>
+                  <td>FPS(emit)</td>
+                  <td><b id="dbgFps">-</b></td>
+                </tr>
+                <tr>
+                  <td>EAR(L/R/avg)</td>
+                  <td><b id="dbgEAR">-</b></td>
+                </tr>
+                <tr>
+                  <td>PERCLOS(1m)</td>
+                  <td><b id="dbgPERCLOS">-</b></td>
+                </tr>
+                <tr>
+                  <td>Gaze dev</td>
+                  <td><b id="dbgGaze">-</b></td>
+                </tr>
+                <tr>
+                  <td>Pose (yaw/pitch/roll)</td>
+                  <td><b id="dbgPose">-</b></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="hint">
+              * EAR/PERCLOS/Gaze/Pose는 연결된 모듈이 있으면 자동 갱신, 없으면 '-' 표시
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ✅ Mediapipe CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+
+    <!-- 앱 스크립트 -->
+    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/debug.ts"></script>
+  </body>
 </html>
