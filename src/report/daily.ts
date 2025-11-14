@@ -1,152 +1,206 @@
-import { getFramesInRange, sumMinutes, avgFocus } from "./aggregate";
+// src/report/daily.ts
+// - 일 리포트 (1시간 / 24시간)
+// - 1h  : 최근 1시간, 1분 단위
+// - 24h : 오늘 0시~24시, 10분 단위 평균
+
+import { db } from "../db";
 import Chart from "chart.js/auto";
 
-export type DailyView = "1h" | "24h";
-let currentView: DailyView = "24h"; // 기본값
+type Mode = "1h" | "24h";
 
-/**
- * 일 리포트: 1분 단위 라인 차트
- * - view=1h  : 최근 60분
- * - view=24h : 00:00~23:59 (하루)
- * - Y: 0~100, X 라벨: 1h(10분마다), 24h(1시간마다)
- */
-export async function renderDaily(date = new Date(), view: DailyView = currentView) {
-  currentView = view;
+let dailyChart: Chart | null = null;
+let currentMode: Mode = "24h";
 
-  // 기간 계산
-  const now = new Date(date);
-  let rangeStart: Date, rangeEnd: Date, minutes: number;
+// 외부에서 mode만 넘겨도 되도록
+export async function renderDaily(baseDate: Date = new Date(), mode: Mode = currentMode) {
+  currentMode = mode;
 
-  if (view === "1h") {
-    rangeEnd = new Date(now);
-    rangeStart = new Date(now.getTime() - 60 * 60 * 1000); // 최근 60분
-    minutes = 60;
+  const canvas = document.getElementById("dailyTimeline") as HTMLCanvasElement | null;
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  // =========================
+  // 1) 조회 구간 계산
+  // =========================
+  let start: number;
+  let end: number;
+  let binMinutes: number;
+  let titleLabel: string;
+
+  if (mode === "1h") {
+    end = baseDate.getTime();
+    start = end - 60 * 60 * 1000; // 최근 1시간
+    binMinutes = 1;
+    titleLabel = "최근 1시간 집중도 (1분 단위)";
   } else {
-    // 24h
-    rangeStart = new Date(now); rangeStart.setHours(0,0,0,0);
-    rangeEnd   = new Date(now); rangeEnd.setHours(23,59,59,999);
-    minutes = 24 * 60; // 1440
+    const day0 = new Date(baseDate);
+    day0.setHours(0, 0, 0, 0);
+    start = day0.getTime();
+    end = start + 24 * 60 * 60 * 1000; // 오늘 하루
+    binMinutes = 10;
+    titleLabel = "오늘 집중도 (10분 평균)";
   }
 
-  const frames = await getFramesInRange(rangeStart.getTime(), rangeEnd.getTime());
+  const binMs = binMinutes * 60 * 1000;
+  const binCount = Math.ceil((end - start) / binMs);
 
-  // KPI 카드(24h 기준 유지)
-  if (view === "24h") {
-    const fullStart = new Date(now); fullStart.setHours(0,0,0,0);
-    const fullEnd   = new Date(now); fullEnd.setHours(23,59,59,999);
-    const fullFrames = await getFramesInRange(fullStart.getTime(), fullEnd.getTime());
-    setText("avgFocusToday", `${avgFocus(fullFrames as any)}점`);
-    setText("totalFocusToday", `${sumMinutes(fullFrames as any, 'focus')}분`);
-    setText("drowsyToday", `${sumMinutes(fullFrames as any, 'drowsy')}분`);
-    setText("distractToday", `${sumMinutes(fullFrames as any, 'distract')}분`);
+  // =========================
+  // 2) DB에서 프레임 가져오기
+  // =========================
+  const frames = await db.frames
+    .where("ts")
+    .between(start, end, true, false)
+    .toArray();
+
+  // 요약 카드용 값 계산
+  updateSummaryCards(frames, mode);
+
+  // =========================
+  // 3) bin별 평균 집중도 계산
+  // =========================
+  const sum: number[] = new Array(binCount).fill(0);
+  const count: number[] = new Array(binCount).fill(0);
+
+  for (const f of frames) {
+    const idx = Math.floor((f.ts - start) / binMs);
+    if (idx < 0 || idx >= binCount) continue;
+    sum[idx] += f.focusScore ?? 0;
+    count[idx] += 1;
   }
 
-  // 분 단위 집계
-  const sums = new Array<number>(minutes).fill(0);
-  const cnts = new Array<number>(minutes).fill(0);
+  const labels: string[] = [];
+  const data: (number | null)[] = [];
 
-  for (const f of frames as any[]) {
-    const t = new Date(f.ts).getTime();
-    const idx = Math.floor((t - rangeStart.getTime()) / (60 * 1000)); // 0..minutes-1
-    if (idx >= 0 && idx < minutes) {
-      sums[idx] += (f.focusScore ?? 0);
-      cnts[idx] += 1;
+  for (let i = 0; i < binCount; i++) {
+    const t = start + i * binMs;
+    const d = new Date(t);
+    labels.push(formatTimeLabel(d, mode));
+
+    if (count[i] > 0) {
+      data.push(Math.round(sum[i] / count[i]));
+    } else {
+      data.push(null); // 빈 구간은 끊어서(spanGaps) 표시
     }
   }
-  const series = sums.map((s, i) => (cnts[i] ? clamp01to100(s / cnts[i]) : null));
-  const labels = Array.from({ length: minutes }, (_, i) => i);
 
-  // 차트 그리기
-  const canvas = document.getElementById('dailyTimeline') as HTMLCanvasElement;
-  const ctx = canvas.getContext('2d')!;
-  // @ts-ignore
-  if ((ctx as any).__chart) (ctx as any).__chart.destroy();
+  // =========================
+  // 4) Chart.js 렌더
+  // =========================
+  if (dailyChart) {
+    dailyChart.destroy();
+    dailyChart = null;
+  }
 
-  // @ts-ignore
-  (ctx as any).__chart = new Chart(ctx, {
-    type: 'line',
+  dailyChart = new Chart(ctx, {
+    type: "line",
     data: {
       labels,
       datasets: [
         {
-          label: view === "1h" ? "최근 60분 평균 집중 점수" : "분당 평균 집중 점수(24h)",
-          data: series,
-          spanGaps: true,
+          label: titleLabel,
+          data,
+          borderWidth: 2,
           pointRadius: 0,
           tension: 0.25,
-        }
-      ]
+        },
+      ],
     },
     options: {
       responsive: true,
-      animation: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            title: (items) => {
-              const idx = items[0].dataIndex;
-              const base = new Date(rangeStart.getTime() + idx * 60 * 1000);
-              const hh = String(base.getHours()).padStart(2, '0');
-              const mm = String(base.getMinutes()).padStart(2, '0');
-              return `${hh}:${mm}`;
-            },
-            label: (item) => `집중도 ${Math.round((item.raw as number) ?? 0)}점`
-          }
-        }
-      },
+      maintainAspectRatio: false, // CSS height 사용
+      spanGaps: true,
       scales: {
-        x: {
-          ticks: {
-            autoSkip: false,
-            maxRotation: 0,
-            callback: (value) => {
-              const i = Number(value);
-              if (view === "1h") {
-                // 10분 간격 라벨
-                if (i % 10 === 0) {
-                  const base = new Date(rangeStart.getTime() + i * 60 * 1000);
-                  const hh = String(base.getHours()).padStart(2, '0');
-                  const mm = String(base.getMinutes()).padStart(2, '0');
-                  return `${hh}:${mm}`;
-                }
-                return "";
-              } else {
-                // 1시간 간격 라벨
-                if (i % 60 === 0) {
-                  const base = new Date(rangeStart.getTime() + i * 60 * 1000);
-                  const hh = String(base.getHours()).padStart(2, '0');
-                  return `${hh}:00`;
-                }
-                return "";
-              }
-            }
-          },
-          grid: {
-            color: (ctx) => {
-              const i = ctx.tick?.value as number;
-              if (i == null) return 'rgba(180,180,220,0.06)';
-              return (i % 60 === 0) ? 'rgba(180,180,220,0.15)' : 'rgba(180,180,220,0.06)';
-            }
-          }
-        },
         y: {
           min: 0,
           max: 100,
-          ticks: { stepSize: 20 },
-          grid: { color: 'rgba(180,180,220,0.08)' }
-        }
+          ticks: {
+            callback: (v) => `${v}%`,
+          },
+        },
+        x: {
+          ticks: {
+            // 너무 촘촘하면 줄이기
+            maxTicksLimit: mode === "1h" ? 7 : 12,
+          },
+        },
       },
-      elements: { line: { borderWidth: 2 } }
-    }
+      plugins: {
+        legend: {
+          display: false,
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const y = ctx.parsed.y;
+              if (y == null) return "";
+              return `집중도 ${y}%`;
+            },
+            title: (items) => {
+              if (!items.length) return "";
+              const idx = items[0].dataIndex;
+              return labels[idx];
+            },
+          },
+        },
+      },
+    },
   });
 }
 
-function setText(id: string, v: string) {
-  const el = document.getElementById(id);
-  if (el) el.innerHTML = v;
+// =========================
+// ⏱ 시간 라벨 포맷
+// =========================
+function formatTimeLabel(d: Date, mode: Mode): string {
+  const hh = d.getHours().toString().padStart(2, "0");
+  const mm = d.getMinutes().toString().padStart(2, "0");
+
+  if (mode === "1h") {
+    // ex) 13:05
+    return `${hh}:${mm}`;
+  } else {
+    // 24시간 뷰: 10분간격 → 시각이 너무 많으니
+    // 1시간 단위는 "13시", 중간(10,20,30,40,50분)은 "13:10" 형식
+    if (d.getMinutes() === 0) return `${hh}시`;
+    return `${hh}:${mm}`;
+  }
 }
-function clamp01to100(v: number) {
-  if (Number.isNaN(v)) return null;
-  return Math.min(100, Math.max(0, v));
+
+// =========================
+// 📊 상단 카드(평균 집중도, 총 집중시간 등) 업데이트
+// =========================
+function updateSummaryCards(frames: any[], mode: Mode) {
+  if (!frames.length) {
+    setText("avgFocusToday", "-");
+    setText("totalFocusToday", "-");
+    setText("drowsyToday", "-");
+    setText("distractToday", "-");
+    return;
+  }
+
+  // 전체 평균 집중도
+  const avg =
+    frames.reduce((a, f) => a + (f.focusScore ?? 0), 0) / frames.length;
+
+  // 초당 15fps 기준 → 60프레임 = 4초지만,
+  // 여기서는 일단 "프레임 60개 = 1분"으로 단순 계산 (기존 로직 유지)
+  const focusMin = Math.round(
+    frames.filter((f) => f.state === "focus").length / 60
+  );
+  const drowsyMin = Math.round(
+    frames.filter((f) => f.state === "drowsy").length / 60
+  );
+  const distractMin = Math.round(
+    frames.filter((f) => f.state === "distract").length / 60
+  );
+
+  setText("avgFocusToday", `${Math.round(avg)}%`);
+  setText("totalFocusToday", `${focusMin}분`);
+  setText("drowsyToday", `${drowsyMin}분`);
+  setText("distractToday", `${distractMin}분`);
+}
+
+function setText(id: string, text: string) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
 }
