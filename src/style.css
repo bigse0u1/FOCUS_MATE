@@ -1,128 +1,479 @@
 /* ------------------ Base ------------------ */
-html,body{margin:0;background:#0f0f14;color:#eaeaf0;font:14px/1.5 system-ui,Segoe UI,Roboto}
-#topbar{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#10121a;border-bottom:1px solid #1f2230;z-index:10}
-h1{font-size:16px;margin:0}
-.tabs{display:flex;gap:8px;padding:8px 12px;background:#0f1120;border-bottom:1px solid #1f2230;position:sticky;top:44px;z-index:9}
-.tab{padding:8px 12px;border:1px solid #2a2f44;background:#171a2c;border-radius:999px;color:#d6dbff;cursor:pointer}
-.tab.active{border-color:#646cff;box-shadow:0 0 0 1px #646cff66 inset}
-
-/* ------------------ Layout ------------------ */
-#layout{
-  display:grid;
-  grid-template-columns: 520px 1fr; /* 좌 라이브뷰 520 + 우 리포트 */
-  gap:16px;
-  align-items:start;
-  padding:12px;
+html,
+body {
+  margin: 0;
+  background: #0f0f14;
+  color: #eaeaf0;
+  font: 14px/1.5 system-ui, Segoe UI, Roboto;
 }
 
-/* 환경설정 탭일 때: 좌측 라이브뷰 숨기고 1칼럼로 전환 */
-#layout.settings-mode{ grid-template-columns: 1fr; }
+#topbar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #10121a;
+  border-bottom: 1px solid #1f2230;
+  z-index: 10;
+}
 
-.camera{position:relative;background:#000;border-radius:12px;overflow:hidden}
-#videoEl{width:100%;display:block;background:#000;height:auto}
-#overlay{position:absolute;inset:0}
-.dot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:18px;height:18px;background:#ff4444;border-radius:999px;border:2px solid #fff;opacity:.9}
-.hidden{display:none}
+h1 {
+  font-size: 16px;
+  margin: 0;
+}
 
-.liveStats{display:flex;gap:12px;align-items:center;margin-top:8px}
-.badge{padding:6px 10px;border-radius:999px;background:#2a2f44;color:#fff}
-.kpis{display:flex;gap:12px;color:#bcd}
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #0f1120;
+  border-bottom: 1px solid #1f2230;
+  position: sticky;
+  top: 44px;
+  z-index: 9;
+}
 
-.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:8px 0}
-.card{background:#14182a;border:1px solid #232a4a;padding:12px;border-radius:12px}
+.tab {
+  padding: 8px 12px;
+  border: 1px solid #2a2f44;
+  background: #171a2c;
+  border-radius: 999px;
+  color: #d6dbff;
+  cursor: pointer;
+}
+
+.tab.active {
+  border-color: #646cff;
+  box-shadow: 0 0 0 1px #646cff66 inset;
+}
+
+/* ------------------ Layout (메인 측정 화면) ------------------ */
+#layout {
+  display: grid;
+  grid-template-columns: 520px 1fr;
+  gap: 16px;
+  align-items: start;
+  padding: 12px;
+}
+
+/* 환경설정 탭일 때: 좌측 라이브뷰 숨기고 1칼럼로 전환 (필요 시 JS에서 클래스 토글) */
+#layout.settings-mode {
+  grid-template-columns: 1fr;
+}
+
+.camera {
+  position: relative;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+#videoEl {
+  width: 100%;
+  display: block;
+  background: #000;
+  height: auto;
+}
+
+#overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 18px;
+  height: 18px;
+  background: #ff4444;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  opacity: 0.9;
+}
+
+/* 기본 hidden */
+.hidden {
+  display: none;
+}
+
+.liveStats {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.badge {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #2a2f44;
+  color: #fff;
+}
+
+.kpis {
+  display: flex;
+  gap: 12px;
+  color: #bcd;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 8px 0;
+}
+
+.card {
+  background: #14182a;
+  border: 1px solid #232a4a;
+  padding: 12px;
+  border-radius: 12px;
+}
 
 /* ------------------ Reports ------------------ */
-.report{display:none}
-.report.active{display:block}
+.report {
+  display: none;
+}
 
-.rank{width:100%;border-collapse:collapse;margin-top:10px}
-.rank th,.rank td{border:1px solid #2a2f44;padding:8px;text-align:center}
+.report.active {
+  display: block;
+}
+
+.rank {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.rank th,
+.rank td {
+  border: 1px solid #2a2f44;
+  padding: 8px;
+  text-align: center;
+}
 
 /* ✅ 1시간/24시간 토글 스타일 */
-.daily-toolbar{display:flex;gap:8px;margin:6px 0}
-.tab.small{padding:6px 10px;font-size:12px}
+.daily-toolbar {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0;
+}
 
-/* (옵션) 주/월 차트 높이 간단 조절 */
+.tab.small {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+/* ✅ 일 리포트 차트 높이 고정 (치즈처럼 늘어나는 거 방지) */
+#dailyTimeline {
+  width: 100%;
+  height: 320px !important;
+  max-height: 320px;
+}
+
+/* 주/월 차트 높이 */
 #reportWeekly canvas,
-#reportMonthly canvas{
-  height:400px !important;   /* 필요하면 값만 바꾸면 됨 */
-  max-height:400px;
+#reportMonthly canvas {
+  height: 400px !important;
+  max-height: 400px;
 }
 
 /* ------------------ Settings (환경설정) ------------------ */
-#reportSettings{
-  width:min(1100px,100%);   /* 전체 폭 제한 */
-  margin-inline:auto;       /* 중앙 정렬 */
-  padding:24px 32px;        /* 좌우 여백 */
-  box-sizing:border-box;
+#reportSettings {
+  width: min(1100px, 100%);
+  margin-inline: auto;
+  padding: 24px 32px;
+  box-sizing: border-box;
 }
 
-.settings-toolbar{
-  display:flex;
-  align-items:center;
-  gap:16px;
-  margin-bottom:20px;
+.settings-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 /* 두 카드(랜드마크/카메라) */
-.settings-grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:32px;                 /* 카드 간 간격 */
-  align-items:start;
-  justify-items:stretch;
-  margin-bottom:24px;
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  align-items: start;
+  justify-items: stretch;
+  margin-bottom: 24px;
 }
 
-#lmCanvas{
-  width:100%;
-  aspect-ratio:4/3;
-  background:#0a0d18;
-  border:1px dashed #2a2f44;
-  border-radius:10px;
-  display:block;
+#lmCanvas {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #0a0d18;
+  border: 1px dashed #2a2f44;
+  border-radius: 10px;
+  display: block;
 }
 
-#debugVideo{
-  width:100%;
-  aspect-ratio:4/3;
-  background:#000;
-  border-radius:10px;
-  display:block;
-  object-fit:cover;
+#debugVideo {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: 10px;
+  display: block;
+  object-fit: cover;
 }
 
-.hint{margin-top:8px;color:#8ea;font-size:13px}
+.hint {
+  margin-top: 8px;
+  color: #8ea;
+  font-size: 13px;
+}
 
 /* 하단 지표 테이블 */
-.metrics-table{margin-top:28px}
-.metrics-table table{
-  width:100%;
-  border-collapse:collapse;
-  background:#14182a;
-  border-radius:12px;
-  overflow:hidden;
-  font-size:13px;
+.metrics-table {
+  margin-top: 28px;
 }
-.metrics-table td{border:1px solid #2a2f44;padding:8px 10px}
-.metrics-table h3,.settings-grid h3{
-  margin:0 0 10px 0;
-  font-size:15px;
-  font-weight:600;
-  color:#cfe;
+
+.metrics-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #14182a;
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.metrics-table td {
+  border: 1px solid #2a2f44;
+  padding: 8px 10px;
+}
+
+.metrics-table h3,
+.settings-grid h3 {
+  margin: 0 0 10px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #cfe;
 }
 
 /* ------------------ Toggle switch ------------------ */
-.switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
-.switch .slider{position:relative;width:36px;height:20px;background:#2a2f44;border-radius:999px;display:inline-block;transition:.2s}
-.switch .slider::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:.2s}
-.switch input{display:none}
-.switch input:checked + .slider{background:#646cff}
-.switch input:checked + .slider::after{transform:translateX(16px)}
-.switch-label{font-size:13px;color:#d6dbff}
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.switch .slider {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background: #2a2f44;
+  border-radius: 999px;
+  display: inline-block;
+  transition: 0.2s;
+}
+
+.switch .slider::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+.switch input {
+  display: none;
+}
+
+.switch input:checked + .slider {
+  background: #646cff;
+}
+
+.switch input:checked + .slider::after {
+  transform: translateX(16px);
+}
+
+.switch-label {
+  font-size: 13px;
+  color: #d6dbff;
+}
 
 /* ------------------ Responsive ------------------ */
-@media (max-width: 900px){
-  .settings-grid{grid-template-columns:1fr;gap:20px}
-  #reportSettings{padding:16px}
+@media (max-width: 900px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  #reportSettings {
+    padding: 16px;
+  }
+}
+
+/* === Landing (처음 진입 화면) === */
+.landing-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at top, #1f2340, #050612 70%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.landing-card {
+  padding: 32px 40px;
+  max-width: 460px;
+  background: rgba(9, 10, 25, 0.96);
+  border-radius: 18px;
+  border: 1px solid #323758;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+
+.landing-title {
+  margin: 0 0 12px 0;
+  font-size: 26px;
+  letter-spacing: 0.04em;
+}
+
+.landing-sub {
+  margin: 0 0 24px 0;
+  font-size: 14px;
+  color: #b7bfdc;
+  line-height: 1.7;
+}
+
+.landing-btn {
+  padding: 10px 26px;
+  border-radius: 999px;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  background: #646cff;
+  color: #fff;
+  cursor: pointer;
+}
+
+.landing-btn:hover {
+  background: #747bff;
+}
+
+/* === Setup screen (중앙 카메라 + 3x3 선택) === */
+.setup {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at top, #1f2340, #050612 70%);
+  z-index: 9000;
+}
+
+.setup-card {
+  width: min(720px, 100% - 32px);
+  background: rgba(9, 10, 25, 0.96);
+  border-radius: 18px;
+  border: 1px solid #323758;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+  padding: 20px 24px 18px;
+}
+
+.setup-title {
+  margin: 0 0 6px 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.setup-sub {
+  margin: 0 0 14px 0;
+  font-size: 13px;
+  color: #b7bfdc;
+  line-height: 1.6;
+}
+
+/* 카메라 + 3x3 오버레이 래퍼 */
+.setup-video-wrap {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+  margin-bottom: 10px;
+}
+
+#setupVideo {
+  width: 100%;
+  display: block;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+/* 카메라 위에 겹치는 전체 레이어 */
+.focuszone-overlay-video {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* 셀에서만 클릭 받도록 */
+}
+
+/* Focus zone grid (3x3, 카메라와 1:1로 맞춤) */
+.focuszone-grid {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 2px;
+
+  pointer-events: auto;
+  background: transparent;
+}
+
+/* 각 셀: 투명 + 점선만, 선택 시 색 채우기 */
+.fz-cell {
+  border: none;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+  position: relative;
+  pointer-events: auto;
+}
+
+.fz-cell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+}
+
+.fz-cell.selected {
+  background: rgba(100, 108, 255, 0.35);
+}
+
+/* 아래 버튼 줄 */
+.focuszone-footer {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ------------------ 마지막 숨김 규칙 (우선순위 보장) ------------------ */
+.hidden {
+  display: none !important;
+}
+
+.landing-overlay.hidden {
+  display: none !important;
+}
+
+.setup.hidden {
+  display: none !important;
 }
