@@ -139,22 +139,29 @@ function onVisionFrame(e: Event) {
 
   const { valid, left, right, iris, conf } = frame;
 
-  // 얼굴이 안 잡히거나 신뢰도 낮으면 → transition 상태로
+  // 🔴 얼굴/눈이 안 잡히거나 신뢰도 낮으면 → 산만 + 집중도 0
   if (!valid || conf < 0.5) {
-    updateStateMachine("transition", {
+    const zoneScore = 0;
+    const focusScore = 0;
+
+    // 집중도 EMA도 0으로 리셋
+    focusScoreEma = 0;
+
+    updateStateMachine("distract", {
       perclos,
       gazeDev: gazeDevEma,
-      zoneScore: 0,
-      focusScore: focusScoreEma,
+      zoneScore,
+      focusScore,
     });
+
     dispatchMetricsEvent({
       earL: 0,
       earR: 0,
       earAvg: 0,
       perclos,
       gazeDev: gazeDevEma,
-      zoneScore: 0,
-      focusScore: focusScoreEma,
+      zoneScore,
+      focusScore,
       gazeDirLabel: "N/A",
     });
     return;
