@@ -5,7 +5,7 @@
 
 import "./ui/tabs";
 import "./debug";
-import "./ui/gazeOverlay"; // 동공 방향 시각화 쓰고 있으면 유지
+import "./ui/gazeOverlay";
 
 import { db } from "./db";
 import { notify } from "./ui/toast";
@@ -108,24 +108,36 @@ export async function endSession() {
   const frames = await db.frames
     .where("ts")
     .between(today0.getTime(), now, true, true)
-    .toArray();
+    .sortBy("ts");
 
-  const avg = frames.length
-    ? Math.round(
-        frames.reduce((a: number, b: any) => a + (b.focusScore ?? 0), 0) /
-          frames.length
-      )
-    : 0;
+  // ts 차이 기반으로 오늘 하루 요약 계산
+  const TARGET_FPS = 15;
+  let focusMs = 0;
+  let drowsyMs = 0;
+  let distractMs = 0;
+  let sumScore = 0;
+  let cntScore = 0;
 
-  const focusMin = Math.round(
-    frames.filter((f: any) => f.state === "focus").length / 60
-  );
-  const drowsyMin = Math.round(
-    frames.filter((f: any) => f.state === "drowsy").length / 60
-  );
-  const distractMin = Math.round(
-    frames.filter((f: any) => f.state === "distract").length / 60
-  );
+  for (let i = 0; i < frames.length; i++) {
+    const f: any = frames[i];
+    const nextTs =
+      i < frames.length - 1 ? (frames[i + 1] as any).ts : f.ts + 1000 / TARGET_FPS;
+    const dt = Math.max(0, nextTs - f.ts);
+
+    if (f.state === "focus") focusMs += dt;
+    else if (f.state === "drowsy") drowsyMs += dt;
+    else if (f.state === "distract") distractMs += dt;
+
+    if (typeof f.focusScore === "number") {
+      sumScore += f.focusScore;
+      cntScore++;
+    }
+  }
+
+  const avg = cntScore ? Math.round(sumScore / cntScore) : 0;
+  const focusMin = Math.round(focusMs / 60000);
+  const drowsyMin = Math.round(drowsyMs / 60000);
+  const distractMin = Math.round(distractMs / 60000);
 
   await db.sessions.put({
     id,
@@ -203,22 +215,40 @@ window.addEventListener("fm:state", (e: any) => {
   void updateLiveCounters();
 });
 
+// ✅ 여기 수정!
 async function updateLiveCounters() {
   const now = Date.now();
   const today0 = new Date();
   today0.setHours(0, 0, 0, 0);
+  const startMs = today0.getTime();
 
-  const frames = await db.frames
+  const frames = (await db.frames
     .where("ts")
-    .between(today0.getTime(), now, true, true)
-    .toArray();
+    .between(startMs, now, true, true)
+    .sortBy("ts")) as { ts: number; state: string }[];
 
-  const drowsyMin = Math.round(
-    frames.filter((f: any) => f.state === "drowsy").length / 60
-  );
-  const distractMin = Math.round(
-    frames.filter((f: any) => f.state === "distract").length / 60
-  );
+  if (!frames.length) {
+    (document.getElementById("drowsyMin") as HTMLElement).innerText = "0";
+    (document.getElementById("distractMin") as HTMLElement).innerText = "0";
+    return;
+  }
+
+  const TARGET_FPS = 15;
+  let drowsyMs = 0;
+  let distractMs = 0;
+
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i];
+    const nextTs =
+      i < frames.length - 1 ? frames[i + 1].ts : f.ts + 1000 / TARGET_FPS;
+    const dt = Math.max(0, nextTs - f.ts);
+
+    if (f.state === "drowsy") drowsyMs += dt;
+    else if (f.state === "distract") distractMs += dt;
+  }
+
+  const drowsyMin = Math.round(drowsyMs / 60000);
+  const distractMin = Math.round(distractMs / 60000);
 
   (document.getElementById("drowsyMin") as HTMLElement).innerText =
     String(drowsyMin);
