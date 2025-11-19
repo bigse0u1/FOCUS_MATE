@@ -37,7 +37,6 @@ window.addEventListener("fm:camera-stream", (e: any) => {
 
 // ========= 랜드마크 표시 =========
 window.addEventListener("fm:vision", (e: Event) => {
-  if (!toggle?.checked) return;
   if (!lmCanvas || !lmCtx) return;
 
   const ev = e as CustomEvent<VisionFrameDetail>;
