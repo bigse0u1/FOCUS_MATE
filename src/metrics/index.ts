@@ -223,7 +223,7 @@ function onVisionFrame(e: Event) {
 
   // 4) 축별 점수
   let eyeScore = 1 - clamp01(perclos / 0.5); // PERCLOS 0.5 → 0점
-  if (isClosed) eyeScore *= 0.6;             // 프레임 단위 눈감음 페널티
+  if (isClosed) eyeScore *= 0.8;             // 프레임 단위 눈감음 페널티
 
   let gazeScore = 1 - clamp01(gazeDevEma / 0.25); // 시선 벗어남 정도
 
@@ -310,7 +310,8 @@ function computeZoneScore(
   irisCenter: { x: number; y: number } | null
 ): { zoneScore: number } {
   const zone = window.fmFocusZone;
-  // 사용자가 "집중 구역을 안 정했을 때"는 적당히 0.8 정도 기본 점수
+
+  // 사용자가 구역을 안 정했거나, 홍채 좌표가 없는 경우 → 기본 0.8
   if (!zone || !irisCenter) {
     return { zoneScore: 0.8 };
   }
@@ -318,41 +319,19 @@ function computeZoneScore(
   const { xMin, xMax, yMin, yMax } = zone;
   const area = clamp01((xMax - xMin) * (yMax - yMin));
 
-  const cx = (xMin + xMax) / 2;
-  const cy = (yMin + yMax) / 2;
-  const innerW = (xMax - xMin) * 0.5;
-  const innerH = (yMax - yMin) * 0.5;
-  const innerXMin = cx - innerW / 2;
-  const innerXMax = cx + innerW / 2;
-  const innerYMin = cy - innerH / 2;
-  const innerYMax = cy + innerH / 2;
-
-  const inOuter =
+  // ✅ "선택한 사각형 안"에만 있으면 전부 같은 취급
+  const inZone =
     irisCenter.x >= xMin &&
     irisCenter.x <= xMax &&
     irisCenter.y >= yMin &&
     irisCenter.y <= yMax;
 
-  const inInner =
-    irisCenter.x >= innerXMin &&
-    irisCenter.x <= innerXMax &&
-    irisCenter.y >= innerYMin &&
-    irisCenter.y <= innerYMax;
+  // ✅ 위치 점수: 구역 안이면 1.0, 밖이면 0.15만 줌
+  let posScore = inZone ? 1.0 : 0.15;
 
-  let posScore = 0.2;
-  if (inOuter) posScore = 0.6;
-  if (inInner) posScore = 1.0;
-
-  // 집중 구역이 너무 넓으면 패널티
-  let sizeFactor = 1.0;
-  if (area <= 1 / 9) sizeFactor = 1.0;      // 1칸 정도 → 1.0
-  else if (area <= 0.25) sizeFactor = 0.8;  // 3~4칸 → 0.8
-  else if (area <= 0.5) sizeFactor = 0.6;   // 절반 정도 → 0.6
-  else sizeFactor = 0.4;                    // 너무 넓음 → 0.4
-
-  const zoneScore = clamp01(posScore * sizeFactor);
-  return { zoneScore };
+  return { zoneScore: clamp01(posScore) };
 }
+
 
 function classifyDirection(dx: number, dy: number): string {
   const len = Math.sqrt(dx * dx + dy * dy);
