@@ -1,8 +1,9 @@
 // src/report/daily.ts
-// - 오늘 하루(00:00 ~ 지금) 기준 카드 메트릭 계산
-// - 1시간 / 24시간은 "그래프 범위만" 바뀜
-// - 24시간 그래프는 항상 오늘 00:00 ~ 23:59(실제론 다음날 00:00 직전) 고정
-// - 그래프에는 state === "focus" 인 구간만 그린다 (나머지는 null → 선 끊김)
+// - 오늘 하루(00:00 ~ 24:00) 기준 카드 메트릭 계산
+// - 그래프 모드:
+//   • 1h  : 선택된 시(hour)의 00~59분, 1분 단위 버킷, X축 라벨은 5분마다 표시
+//   • 24h : 00:00~24:00, 1분 단위 버킷, X축 라벨은 1시간마다 표시
+// - 시간 계산은 FPS가 아니라 ts(타임스탬프) 차이 기반
 
 import { db } from "../db";
 import Chart from "chart.js/auto";
@@ -10,63 +11,82 @@ import Chart from "chart.js/auto";
 type Mode = "1h" | "24h";
 type FrameRow = { ts: number; state: string; focusScore?: number };
 
-const TARGET_FPS = 15; // fallback 용
+const TARGET_FPS = 15; // 마지막 프레임 duration 추정용 fallback
 
 let dailyChart: Chart | null = null;
 
+// ===== 공용 헬퍼 =====
+function pad2(n: number) {
+  return n.toString().padStart(2, "0");
+}
+
+// 카드용 "m시간 n분" 포맷
+function formatHMFromMs(ms: number): string {
+  const totalMin = Math.round(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h <= 0) return `${totalMin}분`;
+  if (m === 0) return `${h}시간`;
+  return `${h}시간 ${m}분`;
+}
+
+// 시간 라벨(분 단위)
+function formatTimeLabel(ts: number) {
+  const d = new Date(ts);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+// =====================================
 // 메인 진입 함수
+// =====================================
 export async function renderDaily(now = new Date(), mode: Mode = "24h") {
-  // 1) 오늘 00:00 ~ 지금까지 프레임 → 카드용 메트릭
+  // 1) 오늘 00:00 ~ 24:00 프레임 가져오기 (카드 + 24h 그래프 공통)
   const dayStart = new Date(now);
   dayStart.setHours(0, 0, 0, 0);
   const dayStartMs = dayStart.getTime();
-
-  const nowMs = now.getTime();
+  const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000;
 
   const dayFrames = (await db.frames
     .where("ts")
-    .between(dayStartMs, nowMs, true, true)
+    .between(dayStartMs, dayEndMs, true, false)
     .sortBy("ts")) as FrameRow[];
 
-  const { focusMs, drowsyMs, distractMs, avgFocusScore } =
-    computeSummaryDurations(dayFrames);
+  // 1-1) 카드용 전체 요약 계산
+  const {
+    focusMs,
+    drowsyMs,
+    distractMs,
+    avgFocusScore,
+  } = computeSummaryDurations(dayFrames);
 
-  const focusMin = Math.round(focusMs / 60000);
-  const drowsyMin = Math.round(drowsyMs / 60000);
-  const distractMin = Math.round(distractMs / 60000);
-  const avgFocus = Math.round(avgFocusScore);
-
-  // ⛳ 카드 숫자 채우기 (항상 "오늘 하루" 기준)
   const $ = (id: string) => document.getElementById(id) as HTMLElement | null;
-  if ($("avgFocusToday")) $("avgFocusToday")!.innerText = String(avgFocus);
-  if ($("totalFocusToday")) $("totalFocusToday")!.innerText = String(focusMin);
-  if ($("drowsyToday")) $("drowsyToday")!.innerText = String(drowsyMin);
-  if ($("distractToday")) $("distractToday")!.innerText = String(distractMin);
 
-  // 2) 그래프용 범위 결정
-  let rangeStart: number;
-  let rangeEnd: number;
-
-  if (mode === "24h") {
-    // ✅ 24시간: 오늘 00:00 ~ 내일 00:00 고정
-    const nextDay = new Date(dayStart);
-    nextDay.setDate(nextDay.getDate() + 1);
-    rangeStart = dayStartMs;
-    rangeEnd = nextDay.getTime();
-  } else {
-    // ✅ 1시간: 지금 기준 직전 1시간 (슬라이딩)
-    rangeEnd = nowMs;
-    rangeStart = rangeEnd - 60 * 60 * 1000;
+  if ($("avgFocusToday")) {
+    $("avgFocusToday")!.innerText = String(Math.round(avgFocusScore));
+  }
+  if ($("totalFocusToday")) {
+    $("totalFocusToday")!.innerText = formatHMFromMs(focusMs);
+  }
+  if ($("drowsyToday")) {
+    $("drowsyToday")!.innerText = formatHMFromMs(drowsyMs);
+  }
+  if ($("distractToday")) {
+    $("distractToday")!.innerText = formatHMFromMs(distractMs);
   }
 
-  const framesInRange = (await db.frames
-    .where("ts")
-    .between(rangeStart, rangeEnd, true, true)
-    .sortBy("ts")) as FrameRow[];
+  // 2) 그래프용 타임라인 생성
+  let labels: string[] = [];
+  let values: (number | null)[] = [];
 
-  const { labels, values } = buildTimeline(framesInRange, mode, rangeStart, rangeEnd);
+  if (mode === "24h") {
+    // 24시간: 00:00~24:00, 1분 버킷(1440개)
+    ({ labels, values } = buildTimeline24h(dayFrames, dayStartMs));
+  } else {
+    // 1시간: "현재 시" 기준 시각의 0~59분, 1분 버킷(60개)
+    ({ labels, values } = buildTimeline1h(dayFrames, now));
+  }
 
-  drawDailyChart(labels, values);
+  drawDailyChart(labels, values, mode);
 }
 
 // =====================================
@@ -93,7 +113,7 @@ function computeSummaryDurations(frames: FrameRow[]) {
     const nextTs =
       i < frames.length - 1
         ? frames[i + 1].ts
-        : f.ts + 1000 / TARGET_FPS; // 마지막 프레임은 대략 한 프레임만 추가
+        : f.ts + 1000 / TARGET_FPS; // 마지막 프레임은 대략 1프레임
 
     const dt = Math.max(0, nextTs - f.ts);
 
@@ -113,42 +133,21 @@ function computeSummaryDurations(frames: FrameRow[]) {
 }
 
 // =====================================
-// 그래프용: 타임라인(1시간 / 24시간)
-// - 1h : 1분 간격, 직전 1시간 (슬라이딩)
-// - 24h: 10분 간격, 오늘 00:00 ~ 23:59 고정
-// - state === 'focus' 인 프레임만 사용해서 그림
+// 24h 타임라인 (1분 버킷, 라벨은 1시간마다 표시)
 // =====================================
-function buildTimeline(
-  frames: FrameRow[],
-  mode: Mode,
-  rangeStart: number,
-  rangeEnd: number
-) {
-  let bucketMs: number;
-  let bucketCount: number;
-
-  if (mode === "1h") {
-    bucketMs = 60_000; // 1분
-    bucketCount = 60; // 60분
-  } else {
-    bucketMs = 10 * 60_000; // 10분
-    bucketCount = 24 * 6; // 24시간 * 6 = 144개
-    // rangeStart는 이미 오늘 00:00, rangeEnd는 내일 00:00 으로 넘어옴
-  }
-
-  // 혹시 range 길이와 bucketCount*bucketMs가 안 맞아도,
-  // start는 그대로 두고, 중심 기준으로 label 생성
-  const startTs = rangeStart;
+function buildTimeline24h(frames: FrameRow[], dayStartMs: number) {
+  const bucketMs = 60_000; // 1분
+  const bucketCount = 24 * 60; // 1440
 
   const sum = new Array<number>(bucketCount).fill(0);
   const cnt = new Array<number>(bucketCount).fill(0);
 
   for (const f of frames) {
-    const idx = Math.floor((f.ts - startTs) / bucketMs);
-    if (idx < 0 || idx >= bucketCount) continue;
+    const diff = f.ts - dayStartMs;
+    if (diff < 0 || diff >= bucketMs * bucketCount) continue;
 
-    // ✅ focus가 아닐 때는 아예 그래프에 반영하지 않음
-    if (f.state !== "focus") continue;
+    const idx = Math.floor(diff / bucketMs);
+    if (idx < 0 || idx >= bucketCount) continue;
 
     if (typeof f.focusScore === "number") {
       sum[idx] += f.focusScore;
@@ -160,13 +159,12 @@ function buildTimeline(
   const values: (number | null)[] = [];
 
   for (let i = 0; i < bucketCount; i++) {
-    const bucketCenter = startTs + bucketMs * (i + 0.5);
-    labels.push(formatTime(bucketCenter));
+    const ts = dayStartMs + i * bucketMs;
+    labels.push(formatTimeLabel(ts));
 
     if (cnt[i] > 0) {
       values.push(Math.round(sum[i] / cnt[i]));
     } else {
-      // 값이 없는 구간은 null → 선이 끊기도록 (집중 안 했던 구간처럼 보이게)
       values.push(null);
     }
   }
@@ -174,17 +172,64 @@ function buildTimeline(
   return { labels, values };
 }
 
-function formatTime(ts: number) {
-  const d = new Date(ts);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+// =====================================
+// 1h 타임라인 (1분 버킷, X축 라벨은 5분마다 표시)
+// - 기준: now가 속한 시(hour)의 00~59분
+// =====================================
+function buildTimeline1h(frames: FrameRow[], now: Date) {
+  const hourStart = new Date(now);
+  hourStart.setMinutes(0, 0, 0);
+  const hourStartMs = hourStart.getTime();
+  const hourEndMs = hourStartMs + 60 * 60 * 1000; // 정확히 1시간
+
+  const framesInHour = frames.filter(
+    (f) => f.ts >= hourStartMs && f.ts < hourEndMs
+  );
+
+  const bucketMs = 60_000; // 1분
+  const bucketCount = 60; // 0~59분
+
+  const sum = new Array<number>(bucketCount).fill(0);
+  const cnt = new Array<number>(bucketCount).fill(0);
+
+  for (const f of framesInHour) {
+    const diff = f.ts - hourStartMs;
+    if (diff < 0 || diff >= bucketMs * bucketCount) continue;
+
+    const idx = Math.floor(diff / bucketMs);
+    if (idx < 0 || idx >= bucketCount) continue;
+
+    if (typeof f.focusScore === "number") {
+      sum[idx] += f.focusScore;
+      cnt[idx] += 1;
+    }
+  }
+
+  const labels: string[] = [];
+  const values: (number | null)[] = [];
+
+  for (let i = 0; i < bucketCount; i++) {
+    const ts = hourStartMs + i * bucketMs;
+    labels.push(formatTimeLabel(ts));
+
+    if (cnt[i] > 0) {
+      values.push(Math.round(sum[i] / cnt[i]));
+    } else {
+      values.push(null);
+    }
+  }
+
+  return { labels, values };
 }
 
 // =====================================
 // Chart.js 렌더링
 // =====================================
-function drawDailyChart(labels: string[], values: (number | null)[]) {
+function drawDailyChart(
+  labels: string[],
+  values: (number | null)[],
+  mode: Mode
+) {
   const canvas = document.getElementById("dailyTimeline") as HTMLCanvasElement;
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -200,12 +245,12 @@ function drawDailyChart(labels: string[], values: (number | null)[]) {
       labels,
       datasets: [
         {
-          label: "",
+          label: "집중도(%)",
           data: values,
           pointRadius: 0,
           borderWidth: 1.5,
           tension: 0.2,
-          spanGaps: false,
+          spanGaps: false, // null 구간은 선이 끊어짐
         },
       ],
     },
@@ -214,37 +259,40 @@ function drawDailyChart(labels: string[], values: (number | null)[]) {
       responsive: true,
       maintainAspectRatio: false,
       scales: {
-        y: {
-          min: 0,
-          max: 100,
-
-          // ✅ y축 숫자 표시
+        x: {
+          // 카테고리 스케일: 라벨은 전체(분 단위)지만, callback에서 일부만 보여줌
           ticks: {
-            display: true,
-            stepSize: 20, // 0, 20, 40, 60, 80, 100
-            color: "#ccc",
-            font: { size: 11 },
-          },
+            autoSkip: false,
+            maxRotation: 45,
+            minRotation: 45,
+            callback: (value, index) => {
+              const i = index as number;
+              const label = labels[i];
 
-          // 축 제목은 숨겨둠 (원하면 켜줄 수 있음)
-          title: {
-            display: false,
+              if (mode === "24h") {
+                // 24시간 그래프: 매 시각(분=00)만 표시
+                // label 형식: "HH:MM"
+                const mm = label.slice(3, 5);
+                return mm === "00" ? label : "";
+              } else {
+                // 1시간 그래프: 5분마다 표시
+                return i % 5 === 0 ? label : "";
+              }
+            },
           },
-
           grid: {
-            color: "rgba(255,255,255,0.08)",
+            display: false, // 세로선 제거
           },
         },
-
-        x: {
+        y: {
+          suggestedMin: 0,
+          suggestedMax: 100,
           ticks: {
-            autoSkip: true,
-            maxRotation: 30,
-            minRotation: 30,
-            color: "#ccc",
-            font: { size: 10 },
+            // 기본 숫자만 (0~100)
           },
-          grid: { display: false },
+          grid: {
+            display: true,
+          },
         },
       },
       plugins: {
@@ -253,4 +301,3 @@ function drawDailyChart(labels: string[], values: (number | null)[]) {
     },
   });
 }
-
