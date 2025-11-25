@@ -157,6 +157,7 @@ function setupHeaderButtons() {
   document.getElementById("btnStart")?.addEventListener("click", startSession);
   document.getElementById("btnEnd")?.addEventListener("click", endSession);
 
+  // ✅ 캘리브레이션
   document.getElementById("btnCalib")?.addEventListener("click", async () => {
     const dot = document.getElementById("calibDot")!;
     dot.classList.remove("hidden");
@@ -171,7 +172,38 @@ function setupHeaderButtons() {
       dot.classList.add("hidden");
     }
   });
+
+  // ✅ 데이터 초기화 버튼 (여기 새로 추가)
+  document.getElementById("btnReset")?.addEventListener("click", async () => {
+    if (!confirm("모든 측정 데이터(프레임/세션)을 삭제할까요?")) return;
+
+    // 세션도 강제로 OFF
+    window.fmSessionActive = false;
+    window.fmSessionId = undefined;
+
+    await db.frames.clear();
+    await db.sessions.clear();
+
+    // UI 숫자 초기화
+    (document.getElementById("stateBadge") as HTMLElement).innerText = "-";
+    (document.getElementById("focusScore") as HTMLElement).innerText = "0";
+    (document.getElementById("drowsyMin") as HTMLElement).innerText = "0";
+    (document.getElementById("distractMin") as HTMLElement).innerText = "0";
+    (document.getElementById("avgFocusToday") as HTMLElement).innerText = "-";
+    (document.getElementById("totalFocusToday") as HTMLElement).innerText = "-";
+    (document.getElementById("drowsyToday") as HTMLElement).innerText = "-";
+    (document.getElementById("distractToday") as HTMLElement).innerText = "-";
+
+    // 리포트 그래프도 리렌더
+    await renderDaily();
+    await renderWeekly();
+    await renderMonthly();
+    await renderRecommend();
+
+    notify("모든 데이터가 초기화되었습니다.");
+  });
 }
+
 
 // =========================
 // 5️⃣ 일 리포트 1h/24h 토글
