@@ -40,6 +40,8 @@ export interface VisionFrameDetail {
     R: Pt | null;
     center: Pt | null; // 양 눈 평균
   };
+  // 🔹 추가: 얼굴 전체 랜드마크 (468개 정도)
+  allPts?: Pt[];
 }
 
 export class Vision {
@@ -84,11 +86,15 @@ export class Vision {
         !results.multiFaceLandmarks ||
         results.multiFaceLandmarks.length === 0
       ) {
-        this.emitFrame(null, null, null, 0, false);
+        // 🔹 얼굴이 아예 안 잡힌 경우: allPts 없음
+        this.emitFrame(null, null, null, 0, false, null);
         return;
       }
 
       const lm: Landmark[] = results.multiFaceLandmarks[0] as Landmark[];
+
+      // 🔹 얼굴 전체 랜드마크 → allPts
+      const allPts: Pt[] = lm.map((p) => ({ x: p.x, y: p.y }));
 
       const leftPts = pickEyePts(lm, LEFT_EYE_IDX);
       const rightPts = pickEyePts(lm, RIGHT_EYE_IDX);
@@ -117,7 +123,8 @@ export class Vision {
           rightPts,
           { L: irisL, R: irisR, center: irisCenter },
           conf,
-          valid
+          valid,
+          allPts // 🔹 추가 전달
         );
         this.lastEmit = now;
       }
@@ -195,7 +202,8 @@ export class Vision {
         }
       | null,
     conf: number,
-    valid: boolean
+    valid: boolean,
+    allPts: Pt[] | null
   ) {
     const detail: VisionFrameDetail = {
       ts: Date.now(),
@@ -210,6 +218,8 @@ export class Vision {
           R: null,
           center: null,
         },
+      // 🔹 얼굴 전체 랜드마크 전달 (없으면 빈 배열도 OK)
+      allPts: allPts ?? [],
     };
 
     window.dispatchEvent(new CustomEvent("fm:vision", { detail }));
