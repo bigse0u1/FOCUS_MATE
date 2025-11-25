@@ -65,6 +65,7 @@
         <button id="btnCalib" class="tab">캘리브레이션 시작</button>
         <button id="btnStart" class="tab">세션 시작</button>
         <button id="btnEnd" class="tab">세션 종료</button>
+        <button id="btnAlarmSound" class="tab">알람 소리 켬</button>
         <button id="btnReset" class="tab danger">데이터 초기화</button>
       </div>
     </header>
@@ -201,6 +202,24 @@
         </div>
       </section>
     </main>
+
+    <div id="alarmPopup" class="alarm-popup hidden">
+      <div class="alarm-popup-inner">
+        <h3>잠깐, 집중이 흐트러지고 있어요</h3>
+        <p>
+          최근 5분 동안 산만/졸음/피로 상태가 길게 이어졌어요.<br />
+          잠깐 스트레칭을 하거나 눈을 쉬게 한 뒤 다시 시작해볼까요?
+        </p>
+        <button id="btnAlarmClose" class="tab small">닫기</button>
+      </div>
+    </div>
+
+    <!-- 🔔 알람 사운드  -->
+    <audio
+      id="alarmSound"
+      src="/public/alarm.mp3"
+      preload="auto"
+    ></audio>
 
     <!-- ✅ Mediapipe CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
