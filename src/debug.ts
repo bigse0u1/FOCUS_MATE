@@ -44,7 +44,7 @@ window.addEventListener("fm:vision", (e: any) => {
   // 1) 얼굴 전체 랜드마크 (회색 작은 점)
   if (Array.isArray(allPts) && allPts.length > 0) {
     ctx.save();
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.7;
     ctx.fillStyle = "red";
 
     for (const p of allPts) {
