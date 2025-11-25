@@ -6,6 +6,7 @@
 import "./ui/tabs";
 import "./debug";
 import "./ui/gazeOverlay";
+import { initAlarmUI } from "./ui/alarm";
 
 import { db } from "./db";
 import { notify } from "./ui/toast";
@@ -76,6 +77,9 @@ function initDomBindings() {
   setupDailyToggle();
   setupCameraStreamBridge();
   setupFocusZoneHandlers();
+
+  // 🔔 알람 UI + 리스너 초기화
+  initAlarmUI();
 
   // 초기 일 리포트(24h)
   renderDaily();
