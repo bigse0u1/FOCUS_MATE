@@ -116,55 +116,51 @@ window.addEventListener("fm:vision", (e: any) => {
 });
 
 // === fm:metrics → 측정 값 표 채우기 ===
-window.addEventListener("fm:metrics", (e: any) => {
+window.addEventListener('fm:metrics', (e: any) => {
   const {
     earL,
     earR,
     earAvg,
     perclos,
     gazeDev,
-    gazeDirLabel,
+    poseYaw,
+    posePitch,
+    poseRoll,
   } = e.detail || {};
 
-  const $ = (id: string) => document.getElementById(id) as HTMLElement | null;
+  const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
-  // EAR(L/R/avg)
-  const earEl = $("dbgEAR");
-  if (earEl) {
-    if (earL != null && earR != null && earAvg != null) {
-      earEl.textContent = `${earL.toFixed(3)} / ${earR.toFixed(3)} / ${earAvg.toFixed(3)}`;
+  // EAR
+  if ($('dbgEAR'))
+    $('dbgEAR').textContent =
+      earL != null && earR != null && earAvg != null
+        ? `${earL.toFixed(3)} / ${earR.toFixed(3)} / ${earAvg.toFixed(3)}`
+        : '-';
+
+  // PERCLOS
+  if ($('dbgPERCLOS'))
+    $('dbgPERCLOS').textContent =
+      perclos != null ? `${(perclos * 100).toFixed(1)}%` : '-';
+
+  // Gaze dev
+  if ($('dbgGaze'))
+    $('dbgGaze').textContent =
+      gazeDev != null ? gazeDev.toFixed(3) : '-';
+
+  // 🔹 새로 추가: Pose (yaw/pitch/roll)
+  if ($('dbgPose')) {
+    if (
+      typeof poseYaw === 'number' &&
+      typeof posePitch === 'number' &&
+      typeof poseRoll === 'number'
+    ) {
+      $('dbgPose').textContent =
+        `${poseYaw.toFixed(1)} / ${posePitch.toFixed(1)} / ${poseRoll.toFixed(1)}`;
     } else {
-      earEl.textContent = "-";
+      $('dbgPose').textContent = '-';
     }
-  }
-
-  // PERCLOS(1m)
-  const perEl = $("dbgPERCLOS");
-  if (perEl) {
-    if (perclos != null) {
-      perEl.textContent = `${(perclos * 100).toFixed(1)}%`;
-    } else {
-      perEl.textContent = "-";
-    }
-  }
-
-  // Gaze dev + 방향
-  const gazeEl = $("dbgGaze");
-  if (gazeEl) {
-    if (gazeDev != null) {
-      const devText = gazeDev.toFixed(3);
-      const dirText = gazeDirLabel ?? "";
-      gazeEl.textContent = dirText ? `${devText} (${dirText})` : devText;
-    } else {
-      gazeEl.textContent = "-";
-    }
-  }
-
-  // Pose는 아직 미구현
-  const poseEl = $("dbgPose");
-  if (poseEl) {
-    poseEl.textContent = "-";
   }
 });
+
 
 export {};
