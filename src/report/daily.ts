@@ -3,7 +3,8 @@
 // - 그래프 모드:
 //   • 1h  : 선택된 시(hour)의 00~59분, 1분 단위 버킷, X축 라벨은 5분마다 표시
 //   • 24h : 00:00~24:00, 1분 단위 버킷, X축 라벨은 1시간마다 표시
-// - 시간 계산은 FPS가 아니라 ts(타임스탬프) 차이 기반
+// - "총 집중시간" 은 24h 타임라인(그래프)에 그려지는 값 기준으로 계산
+//   → 평균 집중도 >= THRESH 점인 1분 구간을 "집중 1분" 으로 인정
 
 import { db } from "../db";
 import Chart from "chart.js/auto";
@@ -12,6 +13,7 @@ type Mode = "1h" | "24h";
 type FrameRow = { ts: number; state: string; focusScore?: number };
 
 const TARGET_FPS = 15; // 마지막 프레임 duration 추정용 fallback
+const FOCUS_THRESH = 60; // 이 점수 이상이면 "집중한 1분" 으로 간주
 
 let dailyChart: Chart | null = null;
 
@@ -51,22 +53,32 @@ export async function renderDaily(now = new Date(), mode: Mode = "24h") {
     .between(dayStartMs, dayEndMs, true, false)
     .sortBy("ts")) as FrameRow[];
 
-  // 1-1) 카드용 전체 요약 계산
+  // 1-1) 카드용: 졸음/산만/평균 집중도는 기존 duration 방식 유지
   const {
-    focusMs,
     drowsyMs,
     distractMs,
     avgFocusScore,
   } = computeSummaryDurations(dayFrames);
 
+  // 1-2) 24h 타임라인 한번 생성 (그래프 + 총 집중시간에 공통 사용)
+  const timeline24h = buildTimeline24h(dayFrames, dayStartMs);
+  const focusMsFromTimeline = computeFocusMsFromTimeline(
+    timeline24h.values,
+    60_000,          // 1분 버킷
+    FOCUS_THRESH     // 이 점수 이상이면 "집중"
+  );
+
   const $ = (id: string) => document.getElementById(id) as HTMLElement | null;
 
+  // 평균 집중도: 기존 avgFocusScore 사용
   if ($("avgFocusToday")) {
     $("avgFocusToday")!.innerText = String(Math.round(avgFocusScore));
   }
+  // ✅ 총 집중시간: 24h 그래프 기준으로 계산한 값 사용
   if ($("totalFocusToday")) {
-    $("totalFocusToday")!.innerText = formatHMFromMs(focusMs);
+    $("totalFocusToday")!.innerText = formatHMFromMs(focusMsFromTimeline);
   }
+  // 졸음/산만 시간: 기존 duration 로직 유지
   if ($("drowsyToday")) {
     $("drowsyToday")!.innerText = formatHMFromMs(drowsyMs);
   }
@@ -79,10 +91,11 @@ export async function renderDaily(now = new Date(), mode: Mode = "24h") {
   let values: (number | null)[] = [];
 
   if (mode === "24h") {
-    // 24시간: 00:00~24:00, 1분 버킷(1440개)
-    ({ labels, values } = buildTimeline24h(dayFrames, dayStartMs));
+    // 24시간 그래프는 방금 만든 timeline24h 그대로 사용
+    labels = timeline24h.labels;
+    values = timeline24h.values;
   } else {
-    // 1시간: "현재 시" 기준 시각의 0~59분, 1분 버킷(60개)
+    // 1시간 그래프는 별도 버킷(하지만 카드의 총 집중시간은 여전히 24h 기준)
     ({ labels, values } = buildTimeline1h(dayFrames, now));
   }
 
@@ -91,6 +104,7 @@ export async function renderDaily(now = new Date(), mode: Mode = "24h") {
 
 // =====================================
 // 카드용: 하루 전체 요약 (ts 기반 duration)
+// (이제는 drowsy/distract/avgFocus 만 사용, focusMs 는 타임라인에서 계산)
 // =====================================
 function computeSummaryDurations(frames: FrameRow[]) {
   if (!frames.length) {
@@ -108,7 +122,7 @@ function computeSummaryDurations(frames: FrameRow[]) {
   let sumScore = 0;
   let cntScore = 0;
 
-  // 🔹 프레임 간 최대 인정 간격 (3초까지는 "연속"으로 본다)
+  // 프레임 간 최대 인정 간격 (3초까지 "연속"으로 본다)
   const FRAME_DT = 1000 / TARGET_FPS; // ≈ 66ms
   const MAX_DT = 3000;                // 3,000ms = 3초
 
@@ -120,11 +134,10 @@ function computeSummaryDurations(frames: FrameRow[]) {
         : f.ts + FRAME_DT; // 마지막 프레임은 한 프레임 만큼만
 
     const dtRaw = nextTs - f.ts;
-    // 음수 방지 + 너무 긴 간격은 3초까지만 인정
     const dt = dtRaw <= 0 ? 0 : Math.min(dtRaw, MAX_DT);
 
-    if (f.state === "focus")      focusMs   += dt;
-    else if (f.state === "drowsy")  drowsyMs  += dt;
+    if (f.state === "focus") focusMs += dt;
+    else if (f.state === "drowsy") drowsyMs += dt;
     else if (f.state === "distract") distractMs += dt;
 
     if (typeof f.focusScore === "number") {
@@ -135,12 +148,12 @@ function computeSummaryDurations(frames: FrameRow[]) {
 
   const avgFocusScore = cntScore ? sumScore / cntScore : 0;
 
+  // focusMs 는 반환하지만, 실제로는 타임라인 기반 값으로 덮어씌움
   return { focusMs, drowsyMs, distractMs, avgFocusScore };
 }
 
-
 // =====================================
-// 24h 타임라인 (1분 버킷, 라벨은 1시간마다 표시)
+// 24h 타임라인 (1분 버킷, 라벨은 1시간마다 표시용)
 // =====================================
 function buildTimeline24h(frames: FrameRow[], dayStartMs: number) {
   const bucketMs = 60_000; // 1분
@@ -177,6 +190,23 @@ function buildTimeline24h(frames: FrameRow[], dayStartMs: number) {
   }
 
   return { labels, values };
+}
+
+// ✅ 24h 타임라인에서 "총 집중시간(ms)" 계산
+// - values: 1분 단위 평균 집중도
+// - threshold 이상인 버킷(분)을 집중으로 인정
+function computeFocusMsFromTimeline(
+  values: (number | null)[],
+  bucketMs: number,
+  threshold = FOCUS_THRESH
+): number {
+  let ms = 0;
+  for (const v of values) {
+    if (typeof v === "number" && v >= threshold) {
+      ms += bucketMs;
+    }
+  }
+  return ms;
 }
 
 // =====================================
@@ -267,7 +297,6 @@ function drawDailyChart(
       maintainAspectRatio: false,
       scales: {
         x: {
-          // 카테고리 스케일: 라벨은 전체(분 단위)지만, callback에서 일부만 보여줌
           ticks: {
             autoSkip: false,
             maxRotation: 45,
@@ -278,7 +307,6 @@ function drawDailyChart(
 
               if (mode === "24h") {
                 // 24시간 그래프: 매 시각(분=00)만 표시
-                // label 형식: "HH:MM"
                 const mm = label.slice(3, 5);
                 return mm === "00" ? label : "";
               } else {
@@ -294,9 +322,6 @@ function drawDailyChart(
         y: {
           suggestedMin: 0,
           suggestedMax: 100,
-          ticks: {
-            // 기본 숫자만 (0~100)
-          },
           grid: {
             display: true,
           },
