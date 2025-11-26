@@ -108,19 +108,20 @@ function computeSummaryDurations(frames: FrameRow[]) {
   let sumScore = 0;
   let cntScore = 0;
 
-  // 🔹 추가: 프레임 간 최대 인정 간격 (두 프레임 사이를 "연속"으로 볼 수 있는 한계)
-  const FRAME_DT = 1000 / TARGET_FPS;   // 대략 66ms
-  const MAX_DT = FRAME_DT * 2;          // 한 프레임당 최대 2프레임치까지만 인정
+  // 🔹 프레임 간 최대 인정 간격 (3초까지는 "연속"으로 본다)
+  const FRAME_DT = 1000 / TARGET_FPS; // ≈ 66ms
+  const MAX_DT = 3000;                // 3,000ms = 3초
 
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
     const nextTs =
       i < frames.length - 1
         ? frames[i + 1].ts
-        : f.ts + FRAME_DT; // 마지막 프레임은 한 프레임만 추가
+        : f.ts + FRAME_DT; // 마지막 프레임은 한 프레임 만큼만
 
     const dtRaw = nextTs - f.ts;
-    const dt = Math.max(0, Math.min(dtRaw, MAX_DT)); // ⬅️ 여기서 과도한 공백 잘라냄
+    // 음수 방지 + 너무 긴 간격은 3초까지만 인정
+    const dt = dtRaw <= 0 ? 0 : Math.min(dtRaw, MAX_DT);
 
     if (f.state === "focus")      focusMs   += dt;
     else if (f.state === "drowsy")  drowsyMs  += dt;
@@ -136,6 +137,7 @@ function computeSummaryDurations(frames: FrameRow[]) {
 
   return { focusMs, drowsyMs, distractMs, avgFocusScore };
 }
+
 
 // =====================================
 // 24h 타임라인 (1분 버킷, 라벨은 1시간마다 표시)
