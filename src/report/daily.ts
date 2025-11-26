@@ -108,17 +108,22 @@ function computeSummaryDurations(frames: FrameRow[]) {
   let sumScore = 0;
   let cntScore = 0;
 
+  // 🔹 추가: 프레임 간 최대 인정 간격 (두 프레임 사이를 "연속"으로 볼 수 있는 한계)
+  const FRAME_DT = 1000 / TARGET_FPS;   // 대략 66ms
+  const MAX_DT = FRAME_DT * 2;          // 한 프레임당 최대 2프레임치까지만 인정
+
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
     const nextTs =
       i < frames.length - 1
         ? frames[i + 1].ts
-        : f.ts + 1000 / TARGET_FPS; // 마지막 프레임은 대략 1프레임
+        : f.ts + FRAME_DT; // 마지막 프레임은 한 프레임만 추가
 
-    const dt = Math.max(0, nextTs - f.ts);
+    const dtRaw = nextTs - f.ts;
+    const dt = Math.max(0, Math.min(dtRaw, MAX_DT)); // ⬅️ 여기서 과도한 공백 잘라냄
 
-    if (f.state === "focus") focusMs += dt;
-    else if (f.state === "drowsy") drowsyMs += dt;
+    if (f.state === "focus")      focusMs   += dt;
+    else if (f.state === "drowsy")  drowsyMs  += dt;
     else if (f.state === "distract") distractMs += dt;
 
     if (typeof f.focusScore === "number") {
