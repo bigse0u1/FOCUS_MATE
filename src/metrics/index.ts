@@ -43,6 +43,10 @@ let perclos = 0;
 let gazeDevEma = 0;
 let focusScoreEma = 0;
 
+// 🔹 머리 움직임 추적용
+let prevPose: { yaw: number; pitch: number; roll: number } | null = null;
+let headMoveEma = 0;
+
 // 상태머신
 type StateLabel = "focus" | "transition" | "distract" | "fatigue" | "drowsy";
 let currentState: StateLabel = "transition";
@@ -137,15 +141,18 @@ function onVisionFrame(e: Event) {
   const frame = ev.detail;
   lastTs = frame.ts;
 
-  const { valid, left, right, iris, conf } = frame;
+  const { valid, left, right, iris, conf, pose } = frame;
 
   // 🔴 얼굴/눈이 안 잡히거나 신뢰도 낮으면 → 산만 + 집중도 0
   if (!valid || conf < 0.5) {
     const zoneScore = 0;
     const focusScore = 0;
-
+  
     // 집중도 EMA도 0으로 리셋
     focusScoreEma = 0;
+    // 🔹 머리 움직임도 리셋
+    prevPose = null;
+    headMoveEma = 0;
 
     updateStateMachine("distract", {
       perclos,
@@ -229,11 +236,30 @@ function onVisionFrame(e: Event) {
 
   const locScore = zoneScore; // 집중 zone 안/밖
 
+  // 🔹 4.5) 머리 움직임 기반 headScore (0~1)
+  let headScore = 1;
+  if (pose) {
+    if (prevPose) {
+      const dyaw = pose.yaw - prevPose.yaw;
+      const dpitch = pose.pitch - prevPose.pitch;
+      const droll = pose.roll - prevPose.roll;
+      const move = Math.sqrt(dyaw * dyaw + dpitch * dpitch + droll * droll); // 한 프레임에서의 회전 변화량
+
+      const alphaH = 0.1; // EMA
+      headMoveEma = headMoveEma * (1 - alphaH) + move * alphaH;
+    }
+    prevPose = pose;
+  }
+
+  // 움직임이 커질수록 점수 감소 (8deg 정도 넘으면 강한 패널티)
+  headScore = 1 - clamp01(headMoveEma / 8);
+
   // 5) 최종 집중도 (0~100)
   const rawFocus =
-    0.45 * eyeScore +
-    0.3 * gazeScore +
-    0.25 * locScore;
+    0.40 * eyeScore +   // 눈 상태
+    0.25 * gazeScore +  // 시선
+    0.20 * locScore +   // 집중 구역
+    0.15 * headScore;   // 머리 움직임
 
   const focus0to100 = clamp01(rawFocus) * 100;
   const alphaF = 0.2;
@@ -264,6 +290,9 @@ function onVisionFrame(e: Event) {
     zoneScore,
     focusScore: focusScoreEma,
     gazeDirLabel,
+    poseYaw: pose?.yaw,
+    posePitch: pose?.pitch,
+    poseRoll: pose?.roll,
   });
 }
 
@@ -445,6 +474,9 @@ function dispatchMetricsEvent(payload: {
   zoneScore: number;
   focusScore: number;
   gazeDirLabel: string;
+  poseYaw?: number;
+  posePitch?: number;
+  poseRoll?: number;
 }) {
   window.dispatchEvent(
     new CustomEvent("fm:metrics", {
