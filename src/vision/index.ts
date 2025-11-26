@@ -20,6 +20,11 @@ const RIGHT_EYE_IDX = [362, 385, 387, 263, 373, 380];
 const LEFT_IRIS_IDX = [468, 469, 470, 471, 472];
 const RIGHT_IRIS_IDX = [473, 474, 475, 476, 477];
 
+// 간단한 head pose 계산용 인덱스
+const NOSE_TIP_IDX = 1;   // 코
+const CHIN_IDX = 152;     // 턱
+const FOREHEAD_IDX = 10;  // 이마
+
 const VIDEO_WIDTH = 640;
 const VIDEO_HEIGHT = 480;
 const MAX_FACES = 1;
@@ -40,7 +45,12 @@ export interface VisionFrameDetail {
     R: Pt | null;
     center: Pt | null; // 양 눈 평균
   };
-  // 🔹 추가: 얼굴 전체 랜드마크 (468개 정도)
+  pose?: {
+    yaw: number;   // 좌우 회전 (deg)
+    pitch: number; // 상하 회전 (deg)
+    roll: number;  // 기울기 (deg)
+  };
+  // 얼굴 전체 랜드마크 (468개 정도)
   allPts?: Pt[];
 }
 
@@ -87,7 +97,7 @@ export class Vision {
         results.multiFaceLandmarks.length === 0
       ) {
         // 🔹 얼굴이 아예 안 잡힌 경우: allPts 없음
-        this.emitFrame(null, null, null, 0, false, null);
+        this.emitFrame(null, null, null, 0, false, null, null);
         return;
       }
 
@@ -115,6 +125,8 @@ export class Vision {
         leftPts.length === 6 &&
         rightPts.length === 6;
 
+      const pose = computePose(lm, leftPts, rightPts);
+
       const now = performance.now();
       const minInterval = 1000 / TARGET_EVENT_FPS;
       if (now - this.lastEmit >= minInterval) {
@@ -124,7 +136,8 @@ export class Vision {
           { L: irisL, R: irisR, center: irisCenter },
           conf,
           valid,
-          allPts // 🔹 추가 전달
+          allPts,
+          pose
         );
         this.lastEmit = now;
       }
@@ -203,7 +216,8 @@ export class Vision {
       | null,
     conf: number,
     valid: boolean,
-    allPts: Pt[] | null
+    allPts: Pt[] | null,
+    pose: { yaw: number; pitch: number; roll: number } | null
   ) {
     const detail: VisionFrameDetail = {
       ts: Date.now(),
@@ -218,10 +232,10 @@ export class Vision {
           R: null,
           center: null,
         },
-      // 🔹 얼굴 전체 랜드마크 전달 (없으면 빈 배열도 OK)
+      pose: pose ?? undefined,
       allPts: allPts ?? [],
     };
-
+  
     window.dispatchEvent(new CustomEvent("fm:vision", { detail }));
   }
 }
@@ -270,4 +284,39 @@ function computeConfidence(lm: Landmark[]): number {
 
 function clamp01(v: number) {
   return Math.max(0, Math.min(1, v));
+}
+
+function computePose(
+  lm: Landmark[],
+  leftPts: Pt[],
+  rightPts: Pt[]
+): { yaw: number; pitch: number; roll: number } | null {
+  const nose = lm[NOSE_TIP_IDX];
+  const chin = lm[CHIN_IDX];
+  const forehead = lm[FOREHEAD_IDX];
+
+  if (!nose || !chin || !forehead || leftPts.length < 1 || rightPts.length < 1) {
+    return null;
+  }
+
+  // 양 눈 중심
+  const eyeL = leftPts[0];
+  const eyeR = rightPts[3] || rightPts[0];
+  const eyeMid = {
+    x: (eyeL.x + eyeR.x) / 2,
+    y: (eyeL.y + eyeR.y) / 2,
+  };
+
+  // yaw: 코가 눈 중앙에서 좌우로 얼마나 치우쳤는지
+  const yaw = (nose.x - eyeMid.x) * 120; // 경험적인 스케일
+
+  // pitch: 얼굴 위/아래 기울어짐 (이마-턱 라인 기준)
+  const faceMidY = (forehead.y + chin.y) / 2;
+  const pitch = (faceMidY - nose.y) * 120;
+
+  // roll: 눈 라인의 기울기
+  const rollRad = Math.atan2(eyeR.y - eyeL.y, eyeR.x - eyeL.x);
+  const roll = (rollRad * 180) / Math.PI;
+
+  return { yaw, pitch, roll };
 }
