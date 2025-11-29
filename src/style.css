@@ -740,3 +740,27 @@ body.theme-dark .landing-title {
 body.theme-dark .metrics-table td b {
   color: #f9fafb;      /* 다크 모드용 결과 텍스트 */
 }
+
+/* ------------------- 랜드마크 / 카메라 미리보기 텍스트 ------------------- */
+body.theme-dark #reportSettings h3 {
+  color: #f9fafb !important;
+}
+
+body.theme-dark .hint {
+  color: #cbd5e1 !important;
+}
+
+/* ------------------- 시스템 모니터링(측정값) 테이블 ------------------- */
+body.theme-dark .metrics-table table td,
+body.theme-dark .metrics-table table th {
+  color: #f9fafb !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+/* ------------------- 랜드마크 미리보기 캔버스 / 카메라 미리보기 ------------------- */
+body.theme-dark #lmCanvas,
+body.theme-dark #debugVideo {
+  color: #f9fafb !important;  /* 캔버스 내 텍스트가 있을 때 대비 */
+  background-color: #020617 !important;
+  border-color: #1f2937 !important;
+}
