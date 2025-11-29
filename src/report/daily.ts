@@ -267,15 +267,34 @@ function drawDailyChart(
   values: (number | null)[],
   mode: Mode
 ) {
-  const canvas = document.getElementById("dailyTimeline") as HTMLCanvasElement;
-  if (!canvas) return;
+  const canvas = document.getElementById("dailyTimeline");
+  if (!(canvas instanceof HTMLCanvasElement)) return;
+
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
+  // -------------------------------
+  // Chart.js destroy() 버그 방지
+  // -------------------------------
   if (dailyChart) {
+    const prevWidth = canvas.width;
+    const prevHeight = canvas.height;
     dailyChart.destroy();
+    canvas.width = prevWidth;
+    canvas.height = prevHeight;
   }
 
+  // -------------------------------
+  // 다크모드 여부에 따라 그리드 색 설정
+  // -------------------------------
+  const isDark = document.body.classList.contains("theme-dark");
+  const gridColor = isDark
+    ? "rgba(255, 255, 255, 0.18)" 
+    : "rgba(0, 0, 0, 0.08)";
+
+  // -------------------------------
+  // Chart.js 생성
+  // -------------------------------
   dailyChart = new Chart(ctx, {
     type: "line",
     data: {
@@ -287,7 +306,7 @@ function drawDailyChart(
           pointRadius: 0,
           borderWidth: 1.5,
           tension: 0.2,
-          spanGaps: false, // null 구간은 선이 끊어짐
+          spanGaps: false,
         },
       ],
     },
@@ -306,24 +325,21 @@ function drawDailyChart(
               const label = labels[i];
 
               if (mode === "24h") {
-                // 24시간 그래프: 매 시각(분=00)만 표시
                 const mm = label.slice(3, 5);
                 return mm === "00" ? label : "";
               } else {
-                // 1시간 그래프: 5분마다 표시
                 return i % 5 === 0 ? label : "";
               }
             },
           },
-          grid: {
-            display: false, // 세로선 제거
-          },
+          grid: { display: false },
         },
         y: {
           suggestedMin: 0,
           suggestedMax: 100,
           grid: {
             display: true,
+            color: gridColor,
           },
         },
       },
@@ -332,4 +348,4 @@ function drawDailyChart(
       },
     },
   });
-}
+} //  ← 반드시 있어야 하는 함수 닫기!
