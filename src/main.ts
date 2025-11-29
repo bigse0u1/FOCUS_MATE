@@ -16,6 +16,7 @@ import { renderMonthly } from "./report/monthly";
 import { renderRecommend } from "./report/recommend";
 import { initMetrics, runCalibration } from "./metrics/index";
 import { Vision } from "./vision";
+import "./ui/theme";
 
 declare global {
   interface Window {
@@ -91,6 +92,20 @@ if (document.readyState === "loading") {
 } else {
   initDomBindings();
 }
+
+// 테마 변경되면 현재 활성 탭만 다시 렌더링
+window.addEventListener("fm:theme-change", async () => {
+  const active = document.querySelector(".tabs .tab.active") as HTMLElement | null;
+  if (!active) return;
+
+  const tab = active.dataset.tab;
+
+  if (tab === "daily") await renderDaily();
+  else if (tab === "weekly") await renderWeekly();
+  else if (tab === "monthly") await renderMonthly();
+  else if (tab === "recommend") await renderRecommend();
+});
+
 
 // =========================
 // 3️⃣ 세션 관리 (버튼으로 ON/OFF)
@@ -309,10 +324,30 @@ function mapKor(s: string) {
 // =========================
 window.addEventListener("fm:tab", (e: any) => {
   const tab = e.detail as string;
-  if (tab === "daily") renderDaily();
-  else if (tab === "weekly") renderWeekly();
-  else if (tab === "monthly") renderMonthly();
-  else if (tab === "recommend") renderRecommend();
+  let reportTask: Promise<any> | null = null;
+
+  async function runReportSequentially(tab: string) {
+    if (reportTask) return; // 실행 중이면 무시
+  
+    reportTask = (async () => {
+      if (tab === "daily") await renderDaily();
+      else if (tab === "weekly") await renderWeekly();
+      else if (tab === "monthly") await renderMonthly();
+      else if (tab === "recommend") await renderRecommend();
+    })();
+  
+    await reportTask;
+    reportTask = null;
+  }
+  
+  window.addEventListener("fm:tab", (e: any) => {
+    const tab = e.detail;
+    if (tab === "daily") renderDaily();
+    else if (tab === "weekly") renderWeekly();
+    else if (tab === "monthly") renderMonthly();
+    else if (tab === "recommend") renderRecommend();
+  });
+  
 });
 
 // =========================
