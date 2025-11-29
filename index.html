@@ -65,7 +65,8 @@
         <button id="btnCalib" class="tab">캘리브레이션 시작</button>
         <button id="btnStart" class="tab">세션 시작</button>
         <button id="btnEnd" class="tab">세션 종료</button>
-        <button id="btnAlarmSound" class="tab">알람 소리 켬</button>
+        <button id="btnAlarmSound" class="tab">알림 소리 on</button>
+        <button id="btnTheme" class="tab">다크 모드</button>
         <button id="btnReset" class="tab danger">데이터 초기화</button>
       </div>
     </header>
@@ -84,7 +85,7 @@
         추천 시간대
       </button>
       <button data-tab="settings" class="tab" role="tab" aria-selected="false">
-        환경설정
+        시스템 모니터링
       </button>
     </nav>
 
@@ -138,7 +139,7 @@
             <thead>
               <tr>
                 <th>순위</th>
-                <th>추천 시간대(2h)</th>
+                <th>추천 시간대(1h)</th>
                 <th>최근 7일 집중시간</th>
               </tr>
             </thead>
@@ -152,7 +153,6 @@
             <div class="card">
               <h3>랜드마크 미리보기</h3>
               <canvas id="lmCanvas"></canvas>
-              <div class="hint">빨간 점: 눈 주변 6포인트(좌/우)</div>
             </div>
 
             <div class="card">
