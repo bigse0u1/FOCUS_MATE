@@ -1,11 +1,10 @@
 // src/report/weekly.ts
-// 최근 7일 일자별 평균 집중 점수 (월 리포트와 동일한 스타일)
+// 최근 7일 평균 집중 점수 (DB 1번만 읽는 최적화 버전)
 
 import { getFramesInRange, avgFocus } from "./aggregate";
 import Chart from "chart.js/auto";
 
 export async function renderWeekly(now = new Date()) {
-  // 기준 날짜(now)의 23:59:59.999까지를 "오늘"로 봄
   const end = new Date(now);
   end.setHours(23, 59, 59, 999);
 
@@ -14,9 +13,19 @@ export async function renderWeekly(now = new Date()) {
   const labels: string[] = [];
   const scores: number[] = [];
 
-  // 최근 7일: 6일 전 ~ 오늘
+  // ===============================
+  // 🔥 DB를 ‘1번만’ 읽기
+  // ===============================
+  const rangeStart = end.getTime() - 7 * dayMs;
+  const rangeEnd = end.getTime();
+  const allFrames = await getFramesInRange(rangeStart, rangeEnd);
+
+  // ===============================
+  // 🔥 7일 데이터를 메모리에서 분리
+  // ===============================
   for (let i = 6; i >= 0; i--) {
     const day = new Date(end.getTime() - i * dayMs);
+
     const y = day.getFullYear();
     const m = day.getMonth();
     const d = day.getDate();
@@ -24,20 +33,35 @@ export async function renderWeekly(now = new Date()) {
     const s = new Date(y, m, d, 0, 0, 0, 0).getTime();
     const e = new Date(y, m, d, 23, 59, 59, 999).getTime();
 
-    const frames = await getFramesInRange(s, e);
+    const frames = allFrames.filter((f) => f.ts >= s && f.ts < e); // ⭕ 메모리 내 filter → 매우 빠름
     scores.push(avgFocus(frames));
-    labels.push(formatLabel(day)); // 예: "11/14(목)"
+    labels.push(formatLabel(day));
   }
 
+  // ===============================
+  // 🎨 Chart.js 렌더링
+  // ===============================
   const canvas = document.getElementById("weeklyBar") as HTMLCanvasElement | null;
   if (!canvas) return;
+
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  // 이전 차트 있으면 제거 (월 리포트 방식과 동일 패턴)
+  // 다크모드 여부
+  const isDark = document.body.classList.contains("theme-dark");
+
+  const gridColor = isDark
+    ? "rgba(255,255,255,0.18)"
+    : "rgba(0,0,0,0.08)";
+  const tickColor = isDark
+    ? "rgba(255,255,255,0.75)"
+    : "#111";
+
+  // 기존 차트 제거
   // @ts-ignore
   if ((ctx as any).__chart) (ctx as any).__chart.destroy();
 
+  // 새 차트 생성
   // @ts-ignore
   (ctx as any).__chart = new Chart(ctx, {
     type: "line",
@@ -47,14 +71,38 @@ export async function renderWeekly(now = new Date()) {
         {
           label: "최근 7일 평균 집중 점수",
           data: scores,
+          borderWidth: 1.6,
+          tension: 0.25,
+          pointRadius: 0,
         },
       ],
     },
     options: {
+      responsive: true,
+      maintainAspectRatio: false,
       scales: {
         y: {
           min: 0,
           suggestedMax: 100,
+          grid: {
+            color: gridColor,
+          },
+          border: {
+            color: gridColor,
+          },
+          ticks: {
+            color: tickColor,
+          },
+        },
+        x: {
+          ticks: {
+            color: tickColor,
+          },
+        },
+      },
+      plugins: {
+        legend: {
+          display: false,
         },
       },
     },
