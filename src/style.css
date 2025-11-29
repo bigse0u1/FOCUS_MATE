@@ -2,79 +2,150 @@
 html,
 body {
   margin: 0;
-  background: #0f0f14;
-  color: #eaeaf0;
-  font: 14px/1.5 system-ui, Segoe UI, Roboto;
+  padding: 0;
+  background: #f5f5f7; /* 애플스러운 밝은 회색 배경 */
+  color: #111827;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, Segoe UI, Roboto,
+    sans-serif;
 }
 
+/* 전체 앱 중앙 정렬 */
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ------------------ Topbar ------------------ */
 #topbar {
   position: sticky;
   top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  background: #10121a;
-  border-bottom: 1px solid #1f2230;
-  z-index: 10;
+  padding: 10px 18px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid #e5e7eb;
 }
 
-h1 {
-  font-size: 16px;
+#topbar h1 {
+  font-size: 18px;
+  font-weight: 700;
   margin: 0;
+  letter-spacing: 0.02em;
 }
 
-.tabs {
+#topbar .right {
   display: flex;
   gap: 8px;
-  padding: 8px 12px;
-  background: #0f1120;
-  border-bottom: 1px solid #1f2230;
-  position: sticky;
-  top: 44px;
-  z-index: 9;
 }
 
+/* 기본 탭/버튼 스타일 (애플 segmented control 느낌) */
 .tab {
-  padding: 8px 12px;
-  border: 1px solid #2a2f44;
-  background: #171a2c;
+  padding: 7px 14px;
   border-radius: 999px;
-  color: #d6dbff;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #111827;
   cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease,
+    border-color 0.15s ease, transform 0.08s ease;
+}
+
+.tab:hover {
+  background: #f3f4f6;
+}
+
+.tab:active {
+  transform: scale(0.97);
 }
 
 .tab.active {
-  border-color: #646cff;
-  box-shadow: 0 0 0 1px #646cff66 inset;
+  background: #0a84ff;
+  color: #ffffff;
+  border-color: #0a84ff;
+  box-shadow: 0 0 0 1px rgba(10, 132, 255, 0.2);
 }
 
-/* ------------------ Layout (메인 측정 화면) ------------------ */
+/* 위험 버튼 (데이터 초기화) */
+.tab.danger {
+  border-color: #fee2e2;
+  color: #b91c1c;
+  background: #fef2f2;
+}
+.tab.danger:hover {
+  background: #fee2e2;
+}
+
+/* ------------------ Tab bar ------------------ */
+.tabs {
+  position: sticky;
+  top: 52px; /* topbar 높이 바로 아래 */
+  z-index: 15;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 12px 4px;
+  background: #f5f5f7;
+}
+
+/* 상단 탭을 좀 더 작게 */
+.tabs .tab {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* ------------------ Layout ------------------ */
+/* 👉 카메라를 위, 리포트를 아래로 세로 스택 (애플 건강앱 느낌) */
 #layout {
-  display: grid;
-  grid-template-columns: 520px 1fr;
+  flex: 1;
+  max-width: 1024px;
+  width: 100%;
+  margin: 0 auto 32px;
+  padding: 12px 16px 0;
+  box-sizing: border-box;
+
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  align-items: start;
-  padding: 12px;
 }
 
-/* 환경설정 탭일 때: 좌측 라이브뷰 숨기고 1칼럼로 전환 (필요 시 JS에서 클래스 토글) */
-#layout.settings-mode {
-  grid-template-columns: 1fr;
+
+
+/* 라이브 뷰 섹션 */
+#livePane {
+  width: 100%;
+  max-width: 600px;   /* 🔥 원하는 크기 */
+  margin: 0 auto;      /* 가운데 정렬 */
 }
+
+/* 리포트 섹션 */
+#reportPane {
+  width: 100%;
+}
+
+/* ------------------ Camera & Live stats ------------------ */
 
 .camera {
   position: relative;
   background: #000;
-  border-radius: 12px;
+  border-radius: 24px;
   overflow: hidden;
+  box-shadow: 0 18px 30px rgba(15, 23, 42, 0.2);
 }
 
 #videoEl {
+
   width: 100%;
+  height: 380px;
   display: block;
+  margin: 0 auto;
   background: #000;
-  height: auto;
+  object-fit: cover;
 }
 
 #overlay {
@@ -87,9 +158,9 @@ h1 {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 18px;
-  height: 18px;
-  background: #ff4444;
+  width: 14px;
+  height: 14px;
+  background: #ff3b30;
   border-radius: 999px;
   border: 2px solid #fff;
   opacity: 0.9;
@@ -97,44 +168,42 @@ h1 {
 
 /* 기본 hidden */
 .hidden {
-  display: none;
+  display: none !important;
 }
 
+/* 실시간 요약(집중도 / 졸음 / 산만) */
 .liveStats {
+  margin-top: 10px;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  margin-top: 8px;
+  justify-content: space-between;
 }
 
+/* 왼쪽 상태 뱃지 */
 .badge {
-  padding: 6px 10px;
+  padding: 4px 10px;
   border-radius: 999px;
-  background: #2a2f44;
-  color: #fff;
+  background: #e5f2ff;
+  color: #0b5394;
+  font-size: 12px;
+  font-weight: 600;
 }
 
+/* 오른쪽 숫자 KPI */
 .kpis {
   display: flex;
   gap: 12px;
-  color: #bcd;
+  font-size: 13px;
+  color: #4b5563;
+}
+.kpis span {
+  font-weight: 600;
+  color: #111827;
 }
 
-.cards {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin: 8px 0;
-}
+/* ------------------ Cards & Reports ------------------ */
 
-.card {
-  background: #14182a;
-  border: 1px solid #232a4a;
-  padding: 12px;
-  border-radius: 12px;
-}
-
-/* ------------------ Reports ------------------ */
 .report {
   display: none;
 }
@@ -143,76 +212,114 @@ h1 {
   display: block;
 }
 
+/* 일 리포트 상단 토글(1시간 / 24시간) */
+.daily-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tab.small {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+/* 작은 카드 4개 (평균 집중도 / 총 시간 / 졸음 / 산만) */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+  border: 1px solid #e5e7eb;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.card b {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+}
+
+/* 그래프 캔버스 공통 */
+#dailyTimeline,
+#weeklyBar,
+#monthlyLine {
+  width: 100%;
+  max-height: 260px;
+}
+
+/* 주/월 그래프 높이 */
+#reportWeekly canvas,
+#reportMonthly canvas {
+  max-height: 260px !important;
+}
+
+/* 추천 시간대 테이블 */
 .rank {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 10px;
+  margin-top: 12px;
+  background: #ffffff;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
 }
 
 .rank th,
 .rank td {
-  border: 1px solid #2a2f44;
-  padding: 8px;
-  text-align: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 13px;
 }
 
-/* ✅ 1시간/24시간 토글 스타일 */
-.daily-toolbar {
-  display: flex;
-  gap: 8px;
-  margin: 6px 0;
+.rank th {
+  background: #f9fafb;
+  text-align: left;
+  font-weight: 600;
+  color: #6b7280;
 }
 
-.tab.small {
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-/* ✅ 일 리포트 차트 높이 고정 (치즈처럼 늘어나는 거 방지) */
-#dailyTimeline {
-  width: 100%;
-  height: 320px !important;
-  max-height: 320px;
-}
-
-/* 주/월 차트 높이 */
-#reportWeekly canvas,
-#reportMonthly canvas {
-  height: 400px !important;
-  max-height: 400px;
+.rank tr:last-child td {
+  border-bottom: none;
 }
 
 /* ------------------ Settings (환경설정) ------------------ */
+
 #reportSettings {
-  width: min(1100px, 100%);
+  width: 100%;
   margin-inline: auto;
-  padding: 24px 32px;
+  padding: 12px 0 0;
   box-sizing: border-box;
 }
 
-.settings-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-/* 두 카드(랜드마크/카메라) */
+/* 두 카드(랜드마크 / 카메라) */
 .settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 32px;
-  align-items: start;
-  justify-items: stretch;
-  margin-bottom: 24px;
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 20px;
 }
 
+.settings-grid .card {
+  height: auto;
+}
+
+/* 랜드마크/디버그 캔버스 */
 #lmCanvas {
   width: 100%;
   aspect-ratio: 4 / 3;
-  background: #0a0d18;
-  border: 1px dashed #2a2f44;
-  border-radius: 10px;
+  background: #0b1120;
+  border-radius: 12px;
   display: block;
 }
 
@@ -220,60 +327,78 @@ h1 {
   width: 100%;
   aspect-ratio: 4 / 3;
   background: #000;
-  border-radius: 10px;
+  border-radius: 12px;
   display: block;
   object-fit: cover;
 }
 
 .hint {
   margin-top: 8px;
-  color: #8ea;
-  font-size: 13px;
+  font-size: 12px;
+  color: #6b7280;
 }
 
-/* 하단 지표 테이블 */
+/* 하단 측정값 테이블 */
 .metrics-table {
-  margin-top: 28px;
+  margin-top: 20px;
 }
 
 .metrics-table table {
   width: 100%;
   border-collapse: collapse;
-  background: #14182a;
-  border-radius: 12px;
+  background: #ffffff;
+  border-radius: 16px;
   overflow: hidden;
   font-size: 13px;
 }
 
 .metrics-table td {
-  border: 1px solid #2a2f44;
-  padding: 8px 10px;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 8px 12px;
+}
+
+.metrics-table tr:last-child td {
+  border-bottom: none;
 }
 
 .metrics-table h3,
 .settings-grid h3 {
-  margin: 0 0 10px 0;
-  font-size: 15px;
+  margin: 0 0 8px 0;
+  font-size: 14px;
   font-weight: 600;
-  color: #cfe;
+  color: #111827;
 }
 
 /* ------------------ Responsive ------------------ */
 @media (max-width: 900px) {
+  #layout {
+    padding-inline: 10px;
+  }
+
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .settings-grid {
     grid-template-columns: 1fr;
-    gap: 20px;
+    gap: 12px;
   }
-  #reportSettings {
-    padding: 16px;
+
+  #topbar {
+    padding-inline: 12px;
+  }
+
+  .tabs {
+    padding-inline: 8px;
   }
 }
 
-/* === Landing (처음 진입 화면) === */
+/* ------------------ Landing (처음 진입 화면) ------------------ */
+
 .landing-overlay {
   position: fixed;
   inset: 0;
-  background: radial-gradient(circle at top, #1f2340, #050612 70%);
+  background: rgba(15, 23, 42, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -281,80 +406,95 @@ h1 {
 }
 
 .landing-card {
-  padding: 32px 40px;
-  max-width: 460px;
-  background: rgba(9, 10, 25, 0.96);
-  border-radius: 18px;
-  border: 1px solid #323758;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+  padding: 100px 100px 100px;
+  max-width: 420px;
+  width: calc(100% - 32px);
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.45);
   text-align: center;
 }
 
 .landing-title {
   margin: 0 0 12px 0;
-  font-size: 26px;
+  font-size: 70px;
+  font-weight: 700;
   letter-spacing: 0.04em;
+  color: #111827;
 }
 
 .landing-sub {
   margin: 0 0 24px 0;
-  font-size: 14px;
-  color: #b7bfdc;
+  font-size: 13px;
+  color: #4b5563;
   line-height: 1.7;
 }
 
 .landing-btn {
-  padding: 10px 26px;
+  padding: 9px 24px;
   border-radius: 999px;
   border: none;
   font-size: 14px;
   font-weight: 600;
-  background: #646cff;
-  color: #fff;
+  background: #0a84ff;
+  color: #ffffff;
   cursor: pointer;
+  box-shadow: 0 10px 20px rgba(10, 132, 255, 0.35);
+  transition: background 0.15s ease, transform 0.08s ease,
+    box-shadow 0.15s ease;
 }
 
 .landing-btn:hover {
-  background: #747bff;
+  background: #0c7ae6;
 }
 
-/* === Setup screen (중앙 카메라 + 3x3 선택) === */
+.landing-btn:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 0 6px 12px rgba(10, 132, 255, 0.25);
+}
+
+.landing-overlay.hidden {
+  display: none !important;
+}
+
+/* ------------------ Setup screen (중앙 카메라 + 3x3 선택) ------------------ */
+
 .setup {
   position: fixed;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at top, #1f2340, #050612 70%);
+  background: rgba(15, 23, 42, 0.75);
   z-index: 9000;
 }
 
 .setup-card {
   width: min(720px, 100% - 32px);
-  background: rgba(9, 10, 25, 0.96);
-  border-radius: 18px;
-  border: 1px solid #323758;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
-  padding: 20px 24px 18px;
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 20px 22px 18px;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.55);
 }
 
 .setup-title {
   margin: 0 0 6px 0;
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
 }
 
 .setup-sub {
   margin: 0 0 14px 0;
   font-size: 13px;
-  color: #b7bfdc;
+  color: #4b5563;
   line-height: 1.6;
 }
 
-/* 카메라 + 3x3 오버레이 래퍼 */
+/* 카메라 + 3×3 오버레이 래퍼 */
 .setup-video-wrap {
   position: relative;
-  border-radius: 12px;
+  border-radius: 18px;
   overflow: hidden;
   background: #000;
   margin-bottom: 10px;
@@ -374,20 +514,19 @@ h1 {
   pointer-events: none; /* 셀에서만 클릭 받도록 */
 }
 
-/* Focus zone grid (3x3, 카메라와 1:1로 맞춤) */
+/* Focus zone grid */
 .focuszone-grid {
   width: 100%;
   height: 100%;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  gap: 2px;
-
+  gap: 1px;
   pointer-events: auto;
   background: transparent;
 }
 
-/* 각 셀: 투명 + 점선만, 선택 시 색 채우기 */
+/* 각 셀: 투명 + 점선 */
 .fz-cell {
   border: none;
   margin: 0;
@@ -403,74 +542,201 @@ h1 {
   content: "";
   position: absolute;
   inset: 0;
-  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border: 1px dashed rgba(255, 255, 255, 0.4);
 }
 
 .fz-cell.selected {
-  background: rgba(100, 108, 255, 0.35);
+  background: rgba(10, 132, 255, 0.32);
 }
 
 /* 아래 버튼 줄 */
 .focuszone-footer {
-  margin-top: 8px;
+  margin-top: 10px;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-}
-
-/* ------------------ 마지막 숨김 규칙 (우선순위 보장) ------------------ */
-.hidden {
-  display: none !important;
-}
-
-.landing-overlay.hidden {
-  display: none !important;
 }
 
 .setup.hidden {
   display: none !important;
 }
 
-.tab.danger {
-  border-color: #ff4d4f;
-  color: #ffb3b3;
+/* ------------------ Dark theme overrides ------------------ */
+
+body.theme-dark {
+  background:
+    /* 왼쪽 상단 아주 은은한 포인트 */
+    radial-gradient(
+      circle at 0% 0%,
+      rgba(72, 119, 255, 0.18),
+      rgba(72, 119, 255, 0.02) 40%,
+      transparent 70%
+    ),
+
+    /* 중앙 하단 깊은 V 하이라이트 (가장 중요한 지점) */
+    radial-gradient(
+      circle at 50% 85%,
+      rgba(72, 119, 255, 0.22),
+      rgba(72, 119, 255, 0.03) 45%,
+      transparent 75%
+    ),
+
+    /* 오른쪽 상단 은은한 포인트 */
+    radial-gradient(
+      circle at 100% 0%,
+      rgba(72, 119, 255, 0.16),
+      rgba(72, 119, 255, 0.02) 40%,
+      transparent 70%
+    ),
+
+    /* 깊고 어두운 전체 배경 */
+    radial-gradient(
+      circle at 50% 50%,
+      #081326 0%,
+      #050816 60%,
+      #030510 100%
+    );
+
+  background-blend-mode: screen, screen, screen, normal;
+  color: #e5e7eb;
 }
 
-.tab.danger:hover {
-  border-color: #ff7875;
-  background: #2a1618;
+
+/* 상단바 / 탭 배경 */
+body.theme-dark #topbar {
+  background: rgba(15, 23, 42, 0.95);
+  border-bottom-color: #1f2937;
 }
 
-/* 🔔 집중 알람 팝업 */
-.alarm-popup {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 12000;
+body.theme-dark .tabs {  background:
+  /* 왼쪽 상단 아주 은은한 포인트 */
+  radial-gradient(
+    circle at 0% 0%,
+    rgba(72, 119, 255, 0.18),
+    rgba(72, 119, 255, 0.02) 40%,
+    transparent 70%
+  ),
+
+  /* 오른쪽 상단 은은한 포인트 */
+  radial-gradient(
+    circle at 100% 0%,
+    rgba(72, 119, 255, 0.16),
+    rgba(72, 119, 255, 0.02) 40%,
+    transparent 70%
+  ),
+
+  /* 깊고 어두운 전체 배경 */
+  radial-gradient(
+    circle at 50% 50%,
+    #081326 0%,
+    #050816 60%,
+    #030510 100%
+  );
+
+background-blend-mode: screen, screen, screen, normal;
+color: #e5e7eb;
 }
 
-.alarm-popup-inner {
-  width: min(420px, 100% - 40px);
-  background: #191426;
-  border-radius: 16px;
-  border: 1px solid #ff6b81;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
-  padding: 20px 24px 18px;
-  text-align: left;
+/* 기본 탭 버튼 */
+body.theme-dark .tab {
+  background: #020617;
+  color: #e5e7eb;
+  border-color: #374151;
 }
 
-.alarm-popup-inner h3 {
-  margin: 0 0 8px 0;
-  font-size: 18px;
-  color: #ffe2e6;
+body.theme-dark .tab:hover {
+  background: #111827;
 }
 
-.alarm-popup-inner p {
-  margin: 0 0 14px 0;
-  font-size: 13px;
-  color: #f5e7ff;
-  line-height: 1.7;
+body.theme-dark .tab.active {
+  background: #0a84ff;
+  color: #ffffff;
+  border-color: #0a84ff;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.4);
+}
+
+/* 데이터 초기화(위험) 버튼은 톤만 살짝 */
+body.theme-dark .tab.danger {
+  background: #111827;
+  border-color: #7f1d1d;
+  color: #fecaca;
+}
+body.theme-dark .tab.danger:hover {
+  background: #7f1d1d;
+}
+
+/* 카메라 박스 / 카드 / 표 배경 */
+body.theme-dark .camera {
+  background: #020617;
+  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.7);
+}
+
+body.theme-dark .card,
+body.theme-dark .rank,
+body.theme-dark .metrics-table table {
+  background: #020617;
+  border-color: #1f2937;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  color: #e5e7eb;
+}
+
+/* 다크모드에서 표(추천 시간대)의 가로선만 밝게 */
+body.theme-dark .rank th,
+body.theme-dark .rank td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15); /* ← 밝게 보이는 선 */
+}
+
+
+/* 카드 제목들 */
+body.theme-dark .card b {
+  color: #f9fafb;
+}
+
+/* 추천 시간대 테이블 헤더 */
+body.theme-dark .rank th {
+  background: #111827;
+  color: #9ca3af;
+}
+
+/* 배지 / 숫자 텍스트 */
+body.theme-dark .badge {
+  background: #1d4ed8;
+  color: #eff6ff;
+}
+
+body.theme-dark .kpis {
+  color: #9ca3af;
+}
+body.theme-dark .kpis span {
+  color: #f9fafb;
+}
+
+/* 힌트 텍스트 */
+body.theme-dark .hint,
+body.theme-dark .setup-sub,
+body.theme-dark .landing-sub {
+  color: #9ca3af;
+}
+
+/* 랜딩 / 셋업 카드 */
+body.theme-dark .landing-card,
+body.theme-dark .setup-card {
+  background: #020617;
+  color: #e5e7eb;
+  border-color: #111827;
+}
+
+body.theme-dark .landing-title {
+  color: #f9fafb; /* 또는 #ffffff */
+}
+
+/* 시스템 모니터링 측정값(결과)의 글자 크기 */
+.metrics-table td b {
+  font-size: 15px;     /* 🔥 원하는 크기 입력 */
+  font-weight: 600;    /* 굵기 조절 가능 */
+  color: #111827;      /* 라이트 모드에서 더 또렷하게 */
+}
+
+body.theme-dark .metrics-table td b {
+  color: #f9fafb;      /* 다크 모드용 결과 텍스트 */
 }
