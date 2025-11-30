@@ -62,7 +62,7 @@ export function initAlarmUI() {
 
 function updateSoundButton(btn: HTMLButtonElement) {
   const muted = !!window.fmAlarmMuted;
-  btn.textContent = muted ? "알람 소리 끔" : "알람 소리 켬";
+  btn.textContent = muted ? "알람 소리 off" : "알람 소리 on";
 }
 
 // ========================
