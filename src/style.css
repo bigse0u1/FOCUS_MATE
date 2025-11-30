@@ -425,7 +425,7 @@ body {
 
 .landing-sub {
   margin: 0 0 24px 0;
-  font-size: 13px;
+  font-size: 16px;
   color: #4b5563;
   line-height: 1.7;
 }
@@ -764,3 +764,75 @@ body.theme-dark #debugVideo {
   background-color: #020617 !important;
   border-color: #1f2937 !important;
 }
+
+/* ===========================
+   🚨 알람 팝업: 화면 정중앙 모달
+   =========================== */
+   #alarmPopup {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  
+    background: rgba(0, 0, 0, 0.45);  /* 배경 반투명 블러 */
+    backdrop-filter: blur(6px);
+  
+    z-index: 9999;
+  }
+  
+  #alarmPopup.hidden {
+    display: none !important;
+  }
+  
+  #alarmPopup .alarm-popup-inner {
+    background: #ffffff;
+    padding: 28px 32px;
+    border-radius: 18px;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+    max-width: 360px;
+    width: calc(100% - 40px);
+    text-align: center;
+  
+    transition: transform 0.18s ease, opacity 0.18s ease;
+    transform: scale(1);
+    opacity: 1;
+  }
+  
+  body.theme-dark #alarmPopup .alarm-popup-inner {
+    background: #0c1220;
+    color: #e5e7eb;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.6);
+  }
+  
+  #alarmPopup h3 {
+    margin: 0 0 12px 0;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  
+  #alarmPopup p {
+    margin: 0 0 20px 0;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  
+  #btnAlarmClose {
+    padding: 8px 18px;
+    border-radius: 999px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    background: #0a84ff;
+    color: white;
+    cursor: pointer;
+  }
+  
+  #btnAlarmClose:hover {
+    background: #0a78e6;
+  }
+  
+  /* Setup 화면 — 제목/부제 다크모드에서는 밝게 */
+  body.theme-dark .setup-title {
+    color: #f3f4f6; /* 밝은 흰색 */
+  }
