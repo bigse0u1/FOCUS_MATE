@@ -58,7 +58,11 @@
 
     <!-- ✅ 메인 헤더 / 탭 / 레이아웃 (처음에는 layout을 숨겨둠) -->
     <header id="topbar">
-      <div class="left"><h1>FocusMate</h1></div>
+      <div class="left topbar-logo-wrap">
+        <img src="/logo-light.png" class="topbar-logo logo-light" alt="Logo" />
+        <img src="/logo-dark.png" class="topbar-logo logo-dark" alt="Logo" />
+        <h1>FocusMate</h1>
+      </div>
       <div class="right">
         <button id="btnCalib" class="tab">캘리브레이션 시작</button>
         <button id="btnStart" class="tab">세션 시작</button>
@@ -116,7 +120,7 @@
           </div>
           <div class="cards">
             <div class="card">평균 집중도 <b id="avgFocusToday">-</b></div>
-            <div class="card">총 집중시간 <b id="totalFocusToday">-</b></div>
+            <div class="card">집중시간 <b id="totalFocusToday">-</b></div>
             <div class="card">졸음시간 <b id="drowsyToday">-</b></div>
             <div class="card">산만시간 <b id="distractToday">-</b></div>
           </div>
