@@ -322,33 +322,30 @@ function mapKor(s: string) {
 // =========================
 // 7️⃣ 탭 전환 시 리포트 렌더
 // =========================
+// =========================
+// 7️⃣ 탭 전환 시 리포트 렌더
+// =========================
+let reportTask: Promise<void> | null = null;
+
+async function runReport(tab: string) {
+  if (reportTask) return; // 실행 중이면 무시
+
+  reportTask = (async () => {
+    if (tab === "daily") await renderDaily();
+    else if (tab === "weekly") await renderWeekly();
+    else if (tab === "monthly") await renderMonthly();
+    else if (tab === "recommend") await renderRecommend();
+  })();
+
+  await reportTask;
+  reportTask = null;
+}
+
 window.addEventListener("fm:tab", (e: any) => {
   const tab = e.detail as string;
-  let reportTask: Promise<any> | null = null;
-
-  async function runReportSequentially(tab: string) {
-    if (reportTask) return; // 실행 중이면 무시
-  
-    reportTask = (async () => {
-      if (tab === "daily") await renderDaily();
-      else if (tab === "weekly") await renderWeekly();
-      else if (tab === "monthly") await renderMonthly();
-      else if (tab === "recommend") await renderRecommend();
-    })();
-  
-    await reportTask;
-    reportTask = null;
-  }
-  
-  window.addEventListener("fm:tab", (e: any) => {
-    const tab = e.detail;
-    if (tab === "daily") renderDaily();
-    else if (tab === "weekly") renderWeekly();
-    else if (tab === "monthly") renderMonthly();
-    else if (tab === "recommend") renderRecommend();
-  });
-  
+  runReport(tab);
 });
+
 
 // =========================
 // 8️⃣ 카메라 스트림 → setupVideo / debugVideo 공유
