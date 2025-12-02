@@ -406,7 +406,7 @@ body {
 }
 
 .landing-card {
-  padding: 100px 100px 100px;
+  padding: 500px 700px 500px;
   max-width: 420px;
   width: calc(100% - 32px);
   background: #ffffff;
@@ -425,7 +425,7 @@ body {
 
 .landing-sub {
   margin: 0 0 24px 0;
-  font-size: 16px;
+  font-size: 18px;
   color: #4b5563;
   line-height: 1.7;
 }
