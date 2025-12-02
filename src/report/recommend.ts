@@ -10,24 +10,25 @@ import { getFramesInRange } from "./aggregate";
 type FrameRow = { ts: number; state: string };
 
 const HORIZON_DAYS = 7;
-const SLOT_MINUTES = 60; // 1시간 단위
+const SLOT_MINUTES = 60;        // 1시간 단위 버킷
 const SLOTS_PER_DAY = 24;
 const MAX_GAP_MS = 10_000;
 
 const DOW_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
-const TOP_N = 10; // 한 번에 보여줄 추천 시간대 개수
+const TOP_N = 10;               // 추천 상위 10개 슬롯 출력
 
 export async function renderRecommend(now: Date = new Date()) {
   const tbody = document.getElementById("recBody") as HTMLTableSectionElement | null;
   if (!tbody) return;
 
-  // 기존 내용 초기화
-  tbody.innerHTML = "";
+  tbody.innerHTML = ""; // 기존 내용 초기화
 
   const endMs = now.getTime();
   const startMs = endMs - HORIZON_DAYS * 24 * 60 * 60 * 1000;
 
-  // 🔥 1) 최근 7일 프레임 한 번만 조회
+  // -----------------------------------------------------
+  // 🔥 1) 최근 7일 프레임 1회 조회 (성능 최적화)
+  // -----------------------------------------------------
   const frames = (await getFramesInRange(startMs, endMs)) as FrameRow[];
 
   if (!frames.length) {
@@ -35,16 +36,20 @@ export async function renderRecommend(now: Date = new Date()) {
     return;
   }
 
-  // buckets[dow][slot] = 해당 요일·시간대의 총 "집중 ms"
+  // -----------------------------------------------------
+  // buckets[dow][slot] = 총 집중(ms)
+  // -----------------------------------------------------
   const buckets: number[][] = Array.from({ length: 7 }, () =>
-    Array<number>(SLOTS_PER_DAY).fill(0)
+    Array(SLOTS_PER_DAY).fill(0)
   );
 
+  // -----------------------------------------------------
   // 🔥 2) 프레임 순회하며 focus 상태 시간 누적
+  // -----------------------------------------------------
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
     const nextTs =
-      i < frames.length - 1 ? frames[i + 1].ts : f.ts + 1000 / 15; // 마지막 프레임용 대략값
+      i < frames.length - 1 ? frames[i + 1].ts : f.ts + 1000 / 15;
 
     if (f.state !== "focus") continue;
 
@@ -53,16 +58,17 @@ export async function renderRecommend(now: Date = new Date()) {
     if (dt > MAX_GAP_MS) dt = MAX_GAP_MS;
 
     const d = new Date(f.ts);
-    const dow = d.getDay(); // 0=일, ... 6=토
-    const totalMin = d.getHours() * 60 + d.getMinutes();
-    const slotIndex = Math.floor(totalMin / SLOT_MINUTES); // 0~23
+    const dow = d.getDay();
+    const slot = Math.floor((d.getHours() * 60 + d.getMinutes()) / SLOT_MINUTES);
 
-    if (slotIndex < 0 || slotIndex >= SLOTS_PER_DAY) continue;
-
-    buckets[dow][slotIndex] += dt;
+    if (slot >= 0 && slot < 24) {
+      buckets[dow][slot] += dt;
+    }
   }
 
-  // 🔥 3) 요일/시간대별 집중 ms를 전역 리스트로 평탄화
+  // -----------------------------------------------------
+  // 🔥 3) 요일/시간대별 집중 ms 전역 리스트로 변환
+  // -----------------------------------------------------
   type SlotAgg = { dow: number; slot: number; focusMs: number };
   const list: SlotAgg[] = [];
 
@@ -80,11 +86,15 @@ export async function renderRecommend(now: Date = new Date()) {
     return;
   }
 
-  // 🔥 4) 전역에서 집중 ms 기준으로 내림차순 정렬 후 상위 N개 선택
+  // -----------------------------------------------------
+  // 🔥 4) 전역 Top N 선택
+  // -----------------------------------------------------
   list.sort((a, b) => b.focusMs - a.focusMs);
   const top = list.slice(0, TOP_N);
 
-  // 🔥 5) 렌더링 (순위 1,2,3,... 전역 기준)
+  // -----------------------------------------------------
+  // 🔥 5) 렌더링
+  // -----------------------------------------------------
   top.forEach((item, idx) => {
     const rank = idx + 1;
     const { dow, slot, focusMs } = item;
@@ -100,9 +110,11 @@ export async function renderRecommend(now: Date = new Date()) {
   });
 }
 
+// -----------------------------------------------------
 // HH:MM ~ HH:MM 포맷
+// -----------------------------------------------------
 function slotToTimeRange(slot: number) {
-  const start = slot * SLOT_MINUTES; // 분
+  const start = slot * SLOT_MINUTES;
   const end = start + SLOT_MINUTES;
 
   const sh = Math.floor(start / 60);
