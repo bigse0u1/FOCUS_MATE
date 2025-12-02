@@ -836,3 +836,29 @@ body.theme-dark #debugVideo {
   body.theme-dark .setup-title {
     color: #f3f4f6; /* 밝은 흰색 */
   }
+
+  /*로고*/
+  .topbar-logo-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .topbar-logo {
+    height: 22px; /* 원하는 크기 */
+    display: block;
+  }
+  /* 라이트 모드 */
+  .logo-dark {
+    display: none;
+  }
+
+  body.theme-dark .logo-light {
+    display: none;
+  }
+
+  body.theme-dark .logo-dark {
+    display: block;
+  }
+
+    
