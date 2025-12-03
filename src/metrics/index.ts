@@ -252,7 +252,7 @@ function onVisionFrame(e: Event) {
   }
 
   // 움직임이 커질수록 점수 감소 (8deg 정도 넘으면 강한 패널티)
-  headScore = 1 - clamp01(headMoveEma / 8);
+  headScore = 1 - clamp01(headMoveEma / 4);
 
   // 5) 최종 집중도 (0~100)
   const rawFocus =
@@ -423,11 +423,11 @@ function classifyState(params: {
   if (perclos > 0.35) return "fatigue";
 
   // 집중도 낮고, zoneScore 낮고, 시선 많이 벗어난 경우 → 산만
-  if (focusScore < 90 || zoneScore < 0.9 || gazeDev > 0.04) {
+  if (focusScore < 80 || zoneScore < 0.9 || gazeDev > 0.04) {
     return "distract";
   }
 
-  if (focusScore < 60) return "transition";
+  if (focusScore < 85) return "transition";
   return "focus";
 }
 
@@ -496,5 +496,3 @@ function dispatchStateEvent(state: StateLabel, score: number) {
     })
   );
 }
-
-
