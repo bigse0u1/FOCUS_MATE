@@ -103,8 +103,7 @@ export async function renderDaily(now = new Date(), mode: Mode = "24h") {
 }
 
 // =====================================
-// 카드용: 하루 전체 요약 (ts 기반 duration)
-// (이제는 drowsy/distract/avgFocus 만 사용, focusMs 는 타임라인에서 계산)
+// 카드용: 하루 전체 요약 
 // =====================================
 function computeSummaryDurations(frames: FrameRow[]) {
   if (!frames.length) {
@@ -116,28 +115,22 @@ function computeSummaryDurations(frames: FrameRow[]) {
     };
   }
 
-  let focusMs = 0;
   let drowsyMs = 0;
   let distractMs = 0;
   let sumScore = 0;
   let cntScore = 0;
 
-  // 프레임 간 최대 인정 간격 (3초까지 "연속"으로 본다)
-  const FRAME_DT = 1000 / TARGET_FPS; // ≈ 66ms
-  const MAX_DT = 3000;                // 3,000ms = 3초
+  const FALLBACK_DT = 1000 / TARGET_FPS; // 1프레임 = 약 66ms
 
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i];
     const nextTs =
-      i < frames.length - 1
-        ? frames[i + 1].ts
-        : f.ts + FRAME_DT; // 마지막 프레임은 한 프레임 만큼만
+      i < frames.length - 1 ? frames[i + 1].ts : f.ts + FALLBACK_DT;
 
-    const dtRaw = nextTs - f.ts;
-    const dt = dtRaw <= 0 ? 0 : Math.min(dtRaw, MAX_DT);
+    let dt = nextTs - f.ts;
+    if (dt < 0) dt = 0;
 
-    if (f.state === "focus") focusMs += dt;
-    else if (f.state === "drowsy") drowsyMs += dt;
+    if (f.state === "drowsy") drowsyMs += dt;
     else if (f.state === "distract") distractMs += dt;
 
     if (typeof f.focusScore === "number") {
@@ -148,9 +141,14 @@ function computeSummaryDurations(frames: FrameRow[]) {
 
   const avgFocusScore = cntScore ? sumScore / cntScore : 0;
 
-  // focusMs 는 반환하지만, 실제로는 타임라인 기반 값으로 덮어씌움
-  return { focusMs, drowsyMs, distractMs, avgFocusScore };
+  return {
+    focusMs: 0,       // focus는 timeline 기반이므로 의미 없음
+    drowsyMs,
+    distractMs,
+    avgFocusScore,
+  };
 }
+
 
 // =====================================
 // 24h 타임라인 (1분 버킷, 라벨은 1시간마다 표시용)
