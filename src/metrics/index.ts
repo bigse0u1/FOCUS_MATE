@@ -254,11 +254,19 @@ function onVisionFrame(e: Event) {
   // 움직임이 커질수록 점수 감소 (8deg 정도 넘으면 강한 패널티)
   headScore = 1 - clamp01(headMoveEma / 4);
 
+  // 🔥 구역 밖 + 움직이면 집중도 급하락
+  const rapidDrop =
+  zoneScoreEma < 0.9 && (gazeDevEma > 0.12 || headMoveEma > 0.7);
+
+  if (rapidDrop) {
+  focusScoreEma = focusScoreEma * 0.6; // 집중도 즉시 깎기
+  }
+
   // 5) 최종 집중도 (0~100)
   const rawFocus =
     0.40 * eyeScore +   // 눈 상태
-    0.25 * gazeScore +  // 시선
-    0.20 * locScore +   // 집중 구역
+    0.20 * gazeScore +  // 시선
+    0.25 * locScore +   // 집중 구역
     0.15 * headScore;   // 머리 움직임
 
   const focus0to100 = clamp01(rawFocus) * 100;
@@ -335,31 +343,52 @@ function updatePerclos(isClosed: boolean) {
   perclos = closedCount / eyeClosedBuffer.length;
 }
 
+// 🔥 구역 기반 EMA
+let zoneScoreEma = 0.5;
+
 function computeZoneScore(
   irisCenter: { x: number; y: number } | null
 ): { zoneScore: number } {
   const zone = window.fmFocusZone;
 
-  // 사용자가 구역을 안 정했거나, 홍채 좌표가 없는 경우 → 기본 0.8
+  const alphaInside = 0.02;   // 구역 안에서 천천히 상승
+  const alphaOutside = 0.001;  // 구역 밖에서는 더 느리게 상승
+  const alphaDrop = 0.15;     // 구역 밖 + 움직임 -> 급락
+
+  // 좌표 없음 → 점수 유지 (중간값 0.5로 복귀)
   if (!zone || !irisCenter) {
-    return { zoneScore: 0.8 };
+    zoneScoreEma = zoneScoreEma * 0.9 + 0.5 * 0.1;
+    return { zoneScore: clamp01(zoneScoreEma) };
   }
 
   const { xMin, xMax, yMin, yMax } = zone;
-  const area = clamp01((xMax - xMin) * (yMax - yMin));
 
-  // ✅ "선택한 사각형 안"에만 있으면 전부 같은 취급
   const inZone =
     irisCenter.x >= xMin &&
     irisCenter.x <= xMax &&
     irisCenter.y >= yMin &&
     irisCenter.y <= yMax;
 
-  // ✅ 위치 점수: 구역 안이면 1.0, 밖이면 0.15만 줌
-  let posScore = inZone ? 1.0 : 0.15;
+  // 목표 값
+  const target = inZone ? 1.0 : 0.7;
 
-  return { zoneScore: clamp01(posScore) };
+  // ---------- EMA 적용 ----------
+  if (inZone) {
+    // 구역 안: 천천히 올라감
+    zoneScoreEma = zoneScoreEma * (1 - alphaInside) + target * alphaInside;
+  } else {
+    // 구역 밖: 느리게 상승
+    zoneScoreEma = zoneScoreEma * (1 - alphaOutside) + target * alphaOutside;
+
+    // 🔥 구역 밖 + 시선/머리 움직임 → 급격히 하락
+    if (gazeDevEma > 0.12 || headMoveEma > 0.6) {
+      zoneScoreEma = zoneScoreEma * (1 - alphaDrop);
+    }
+  }
+
+  return { zoneScore: clamp01(zoneScoreEma) };
 }
+
 
 
 function classifyDirection(dx: number, dy: number): string {
@@ -423,11 +452,11 @@ function classifyState(params: {
   if (perclos > 0.35) return "fatigue";
 
   // 집중도 낮고, zoneScore 낮고, 시선 많이 벗어난 경우 → 산만
-  if (focusScore < 80 || zoneScore < 0.9 || gazeDev > 0.04) {
+  if (focusScore < 83 || zoneScore < 0.9 || gazeDev > 0.04) {
     return "distract";
   }
 
-  if (focusScore < 85) return "transition";
+  if (focusScore < 88) return "transition";
   return "focus";
 }
 
