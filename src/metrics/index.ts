@@ -452,7 +452,7 @@ function classifyState(params: {
   if (perclos > 0.35) return "fatigue";
 
   // 집중도 낮고, zoneScore 낮고, 시선 많이 벗어난 경우 → 산만
-  if (focusScore < 83 || zoneScore < 0.9 || gazeDev > 0.004) {
+  if (focusScore < 83 || zoneScore < 0.9 || gazeDev > 0.08) {
     return "distract";
   }
 
@@ -525,4 +525,3 @@ function dispatchStateEvent(state: StateLabel, score: number) {
     })
   );
 }
-
