@@ -7,7 +7,6 @@
 
 // Mediapipe CDN에서 제공하는 전역 심볼 타입 선언 (TS 에러 방지용)
 declare const FaceMesh: any;
-declare const Camera: any;
 
 type Pt = { x: number; y: number };
 type Landmark = { x: number; y: number; z: number; visibility?: number };
@@ -59,14 +58,18 @@ export class Vision {
   private camera: any | null = null;
   private faceMesh: any | null = null;
   private lastEmit = 0;
-
+  private rafWin: Window = window;
+  private rafId: number | null = null;
+  private stream: MediaStream | null = null;
+  private running = false;
+  
   async start() {
     // 메인 화면 왼쪽 카메라 요소
     this.video = document.getElementById("videoEl") as HTMLVideoElement | null;
     if (!this.video) throw new Error("videoEl not found");
 
     const stream = await this.ensureCameraPermission();
-
+    this.stream = stream;
     // 디버그(환경설정 탭)에서 사용할 수 있도록 스트림도 송출
     window.dispatchEvent(
       new CustomEvent("fm:camera-stream", { detail: { stream } })
@@ -127,58 +130,111 @@ export class Vision {
 
       const pose = computePose(lm, leftPts, rightPts);
 
-      const now = performance.now();
-      const minInterval = 1000 / TARGET_EVENT_FPS;
-      if (now - this.lastEmit >= minInterval) {
-        this.emitFrame(
-          leftPts,
-          rightPts,
-          { L: irisL, R: irisR, center: irisCenter },
-          conf,
-          valid,
-          allPts,
-          pose
-        );
-        this.lastEmit = now;
-      }
+      this.emitFrame(
+        leftPts,
+        rightPts,
+        { L: irisL, R: irisR, center: irisCenter },
+        conf,
+        valid,
+        allPts,
+        pose
+      );
     });
 
-    // Mediapipe CameraUtils 사용 (CDN 전역 Camera)
-    const Cam = (window as any).Camera ?? Camera;
-    if (!Cam) {
-      console.error("[Vision] Camera global not found");
-      throw new Error("Camera not available");
-    }
-
-    this.camera = new Cam(this.video, {
-      onFrame: async () => {
-        if (!this.faceMesh || !this.video) return;
-        await this.faceMesh.send({ image: this.video });
-      },
-      width: VIDEO_WIDTH,
-      height: VIDEO_HEIGHT,
-    });
-
-    await this.camera.start();
-    console.log("[Vision] ✅ Started with FaceMesh + iris");
+    this.rafWin = window;
+    this.startLoop();
+    console.log("[Vision] ✅ Started with FaceMesh + iris (custom loop)");
+    
   }
 
   stop() {
-    try {
-      this.camera?.stop();
-    } catch {}
-    const stream = this.video?.srcObject as MediaStream | null;
+    this.stopLoop();
+  
+    // video가 PiP로 바뀌었을 수도 있으니, 저장해둔 this.stream을 우선 사용
+    const stream =
+      (this.video?.srcObject as MediaStream | null) ??
+      this.stream;
+  
     stream?.getTracks().forEach((t) => t.stop());
+  
     if (this.video) this.video.srcObject = null;
+  
     try {
       // @ts-ignore
       this.faceMesh?.close?.();
     } catch {}
-    this.camera = null;
+  
+    this.camera = null;   // (선택) 이제 사용 안 함
     this.faceMesh = null;
+    this.stream = null;
+  
     console.log("[Vision] Stopped");
   }
+  public switchToPip(pipWin: Window) {
+    if (!this.faceMesh) throw new Error("Vision not started yet");
+  
+    // ✅ 전환 시점에 메인 videoEl을 다시 잡아 안전하게 유지
+    const mainVideo = document.getElementById("videoEl") as HTMLVideoElement | null;
+    if (!mainVideo) throw new Error("videoEl not found");
+    this.video = mainVideo;
+  
+    // ✅ 메인 비디오에 스트림이 살아있는지 확인
+    const stream = this.video.srcObject as MediaStream | null;
+    if (!stream) throw new Error("main video stream missing");
+  
+    this.stopLoop();
+    this.rafWin = pipWin;
+    this.startLoop();
+  
+    console.log("[Vision] ✅ Switched loop to PiP window (video stays main)");
+  }
+  
+  
+  
 
+  private startLoop() {
+    if (!this.faceMesh || !this.video) return;
+  
+    this.running = true;
+    const minInterval = 1000 / TARGET_EVENT_FPS;
+    let lastSend = 0;
+  
+    const tick = async (t: number) => {
+      if (!this.running || !this.faceMesh || !this.video) return;
+  
+      // ✅ PiP 전환 직후 / 탭 비가시 상태에서 video 프레임이 준비되지 않으면 send 금지
+      if (this.video.readyState < 2 || this.video.videoWidth === 0 || this.video.videoHeight === 0) {
+        this.rafId = this.rafWin.requestAnimationFrame(tick);
+        return;
+      }
+  
+      if (t - lastSend >= minInterval) {
+        lastSend = t;
+        try {
+          await this.faceMesh.send({ image: this.video });
+        } catch (e) {
+          // ✅ 에러를 숨기지 말고 찍어야 원인 추적 가능
+          console.error("[Vision] faceMesh.send failed:", e);
+        }
+      }
+  
+      this.rafId = this.rafWin.requestAnimationFrame(tick);
+    };
+  
+    this.rafId = this.rafWin.requestAnimationFrame(tick);
+  }
+  
+  
+  private stopLoop() {
+    this.running = false;
+    if (this.rafId !== null) {
+      try {
+        this.rafWin.cancelAnimationFrame(this.rafId);
+      } catch {}
+    }
+    this.rafId = null;
+  }
+  
   private async ensureCameraPermission(): Promise<MediaStream> {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
