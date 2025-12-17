@@ -17,8 +17,6 @@ import { renderRecommend } from "./report/recommend";
 import { initMetrics, runCalibration } from "./metrics/index";
 import { Vision } from "./vision";
 import "./ui/theme";
-import { openDocPiP } from "./pip";
-
 
 declare global {
   interface Window {
@@ -178,48 +176,6 @@ function setupHeaderButtons() {
   document.getElementById("btnStart")?.addEventListener("click", startSession);
   document.getElementById("btnEnd")?.addEventListener("click", endSession);
 
-    // ✅ PiP 측정 버튼
-    document.getElementById("btnPip")?.addEventListener("click", async () => {
-      try {
-        if (!vision) {
-          notify("앱이 아직 시작되지 않았어요. 먼저 시작 버튼을 눌러주세요.");
-          return;
-        }
-  
-        // 1) PiP 창 열기
-        const { pipWin, video: pipVideo } = await openDocPiP();
-  
-        // 2) 메인 videoEl의 스트림을 PiP video로 연결
-        const mainVideo = document.getElementById("videoEl") as HTMLVideoElement | null;
-        const stream = mainVideo?.srcObject as MediaStream | null;
-        if (!stream) {
-          notify("카메라 스트림이 없습니다. 먼저 앱을 시작하세요.");
-          return;
-        }
-  
-        pipVideo.srcObject = stream;
-        pipVideo.setAttribute("playsinline", "true");
-        pipVideo.muted = true;
-        await pipVideo.play();
-  
-        // 3) Vision 루프를 PiP 창으로 전환 (핵심)
-        vision.switchToPip(pipWin);
-  
-        notify("PiP 창에서 측정을 유지합니다.");
-  
-        // (선택) PiP 닫으면 메인으로 복귀
-        pipWin.addEventListener("pagehide", () => {
-          try {
-            // ✅ 메인 window로 rAF 루프 복귀
-            vision?.switchToPip(window);
-            notify("PiP 종료 — 메인 화면으로 복귀합니다.");
-          } catch {}
-        });
-      } catch (e: any) {
-        notify(e?.message ?? "PiP 실행 실패");
-      }
-    });
-  
   // ✅ 캘리브레이션
   document.getElementById("btnCalib")?.addEventListener("click", async () => {
     const dot = document.getElementById("calibDot")!;
